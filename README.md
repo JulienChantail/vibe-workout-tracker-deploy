@@ -13,6 +13,11 @@ progression basée sur une estimation du 1RM.
 
 ## Démarrer en local
 
+Le plus simple : avec Docker, `docker compose up --build` lance l'appli et une base
+PostgreSQL d'un coup. Voir [DOCKER.md](./DOCKER.md).
+
+Sans Docker :
+
 1. Avoir une base Postgres accessible (Neon, ou un conteneur local) et renseigner
    `DATABASE_URL` dans `.env` (voir `.env.example`).
 2. Installer les dépendances et préparer la base :
@@ -50,4 +55,6 @@ progression basée sur une estimation du 1RM.
 
 ## Déploiement
 
-Voir [DEPLOY.md](./DEPLOY.md) pour la mise en production sur Render avec une base Neon.
+- [DOCKER.md](./DOCKER.md) : image Docker de l'appli (base pour un déploiement en
+  conteneur : Azure, Google Cloud Run…).
+- [DEPLOY.md](./DEPLOY.md) : mise en production sur Render avec une base Neon.

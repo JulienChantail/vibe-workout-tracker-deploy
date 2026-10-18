@@ -1,0 +1,34 @@
+# Lance l'appli + une base PostgreSQL en local :
+#   docker compose up --build
+# puis ouvre http://localhost:3000
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: workout
+      POSTGRES_PASSWORD: workout
+      POSTGRES_DB: workout
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U workout -d workout"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    restart: unless-stopped
+    init: true
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://workout:workout@db:5432/workout
+      SESSION_SECRET: ${SESSION_SECRET:-dev-secret-change-me}
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  db-data:
