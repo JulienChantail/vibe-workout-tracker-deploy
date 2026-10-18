@@ -10,7 +10,8 @@ PC et chez un hébergeur cloud (Azure, Google Cloud…).
 | --- | --- |
 | `Dockerfile` | La recette de l'image : installe les dépendances, compile Next.js, prépare l'image finale. |
 | `.dockerignore` | Ce qu'on n'envoie **pas** dans l'image (`node_modules`, `.env`, `.git`…). |
-| `docker-compose.yml` | Lance **l'appli + une base PostgreSQL** ensemble, pour tester en local. |
+| `docker-compose.yml` | Lance **l'appli + une base SQL Server** ensemble, pour tester en local (même moteur qu'Azure SQL). |
+| `scripts/docker-start.sh` | Commande de démarrage du conteneur : migrations (avec relances si la base n'est pas encore prête) puis Next.js. |
 | `.env.example` | Les variables d'environnement attendues par l'appli. |
 
 ## Prérequis
@@ -23,6 +24,10 @@ docker --version
 docker compose version
 ```
 
+> SQL Server demande au moins **2 Go de RAM** pour Docker. Sur un Mac Apple Silicon
+> (M1/M2…), l'image SQL Server tourne en émulation : active *Use Rosetta for x86/amd64
+> emulation* dans les réglages de Docker Desktop.
+
 ## Lancer en local (appli + base de données)
 
 ```bash
@@ -31,9 +36,9 @@ docker compose up --build
 
 Au premier lancement, Docker construit l'image (quelques minutes). Ensuite :
 
-1. Le conteneur `db` démarre PostgreSQL.
-2. Le conteneur `app` attend que la base soit prête, applique les migrations Prisma
-   (`prisma migrate deploy`) puis lance Next.js.
+1. Le conteneur `db` démarre SQL Server.
+2. Le conteneur `app` attend que SQL Server soit prêt, crée la base `workout` et ses
+   tables (`prisma migrate deploy`) puis lance Next.js.
 3. Ouvre [http://localhost:3000](http://localhost:3000).
 
 Dans un **autre terminal**, crée les types de séance par défaut (Traction, Dips) :
@@ -56,13 +61,13 @@ survivent à un `docker compose down`.
 ## Construire et lancer uniquement l'image de l'appli
 
 C'est ce que fera un hébergeur cloud : il lance **une seule** image, et la base de
-données est ailleurs (Neon, Azure Database for PostgreSQL…).
+données est ailleurs (Azure SQL Database).
 
 ```bash
 docker build -t vibe-workout-tracker .
 
 docker run -p 3000:3000 \
-  -e DATABASE_URL="postgresql://<user>:<password>@<host>/<db>?sslmode=require" \
+  -e DATABASE_URL="sqlserver://<serveur>.database.windows.net:1433;database=workout;user=<admin>;password=<mot-de-passe>;encrypt=true" \
   -e SESSION_SECRET="une-longue-chaine-aleatoire" \
   vibe-workout-tracker
 ```
@@ -71,7 +76,7 @@ docker run -p 3000:3000 \
 
 | Variable | Obligatoire | Description |
 | --- | --- | --- |
-| `DATABASE_URL` | oui | URL de connexion PostgreSQL. |
+| `DATABASE_URL` | oui | URL de connexion SQL Server, au format `sqlserver://hôte:1433;database=...;user=...;password=...;encrypt=true`. Ajoute `trustServerCertificate=true` pour un SQL Server local (certificat auto-signé), jamais pour Azure. Si le mot de passe contient `; = : / [ ] { }`, entoure-le d'accolades : `password={mon;mdp}`. |
 | `SESSION_SECRET` | oui en prod | Clé qui signe les cookies de session. Mets une longue chaîne aléatoire (`openssl rand -hex 32`). |
 | `PORT` | non | Port d'écoute, `3000` par défaut. |
 

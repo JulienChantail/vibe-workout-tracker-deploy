@@ -1,10 +1,11 @@
 import { PrismaClient } from '../app/generated/prisma';
-import { PrismaPg } from '@prisma/adapter-pg';
+import { PrismaMssql } from '@prisma/adapter-mssql';
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
 function createClient() {
-  const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
+  // DATABASE_URL au format SQL Server : sqlserver://host:1433;database=...;user=...;password=...;encrypt=true
+  const adapter = new PrismaMssql(process.env.DATABASE_URL!);
   return new PrismaClient({ adapter });
 }
 

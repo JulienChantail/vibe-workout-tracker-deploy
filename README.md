@@ -7,19 +7,20 @@ progression basée sur une estimation du 1RM.
 ## Stack
 
 - [Next.js 16](https://nextjs.org) (App Router) + React 19 + Tailwind CSS 4
-- [Prisma ORM 7](https://www.prisma.io) + PostgreSQL ([Neon](https://neon.tech) en production)
+- [Prisma ORM 7](https://www.prisma.io) + SQL Server ([Azure SQL Database](https://learn.microsoft.com/azure/azure-sql/database/) en production)
 - Auth maison par profils + mot de passe (cookie de session signé)
 - [Recharts](https://recharts.org) pour la courbe de progression
 
 ## Démarrer en local
 
 Le plus simple : avec Docker, `docker compose up --build` lance l'appli et une base
-PostgreSQL d'un coup. Voir [DOCKER.md](./DOCKER.md).
+SQL Server d'un coup. Voir [DOCKER.md](./DOCKER.md).
 
 Sans Docker :
 
-1. Avoir une base Postgres accessible (Neon, ou un conteneur local) et renseigner
-   `DATABASE_URL` dans `.env` (voir `.env.example`).
+1. Avoir un SQL Server accessible (Azure SQL, ou le conteneur local :
+   `docker compose up -d db`) et renseigner `DATABASE_URL` dans `.env` (voir
+   `.env.example`).
 2. Installer les dépendances et préparer la base :
 
    ```bash
@@ -56,7 +57,6 @@ Sans Docker :
 ## Déploiement
 
 - [DEPLOY-AZURE.md](./DEPLOY-AZURE.md) : mise en production sur Azure (Container Apps +
-  Container Registry + PostgreSQL), avec déploiement automatique par GitHub Actions.
+  Container Registry + Azure SQL Database), avec déploiement automatique par GitHub Actions.
 - [DOCKER.md](./DOCKER.md) : image Docker de l'appli (base pour un déploiement en
-  conteneur : Azure, Google Cloud Run…).
-- [DEPLOY.md](./DEPLOY.md) : mise en production sur Render avec une base Neon.
+  conteneur).

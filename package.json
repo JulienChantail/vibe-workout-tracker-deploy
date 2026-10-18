@@ -12,7 +12,7 @@
     "db:seed": "node -r dotenv/config prisma/seed.mjs"
   },
   "dependencies": {
-    "@prisma/adapter-pg": "^7.10.0",
+    "@prisma/adapter-mssql": "^7.10.0",
     "@prisma/client": "^7.10.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",

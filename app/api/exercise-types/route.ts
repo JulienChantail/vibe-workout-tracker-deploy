@@ -3,10 +3,15 @@ import prisma from '../../../lib/prisma';
 import { requireCurrentUser } from '../../../lib/session';
 import { errorInfo } from '../../../lib/errors';
 
+// SQL Server ne gère pas les tableaux : quickWeights est stocké en JSON texte
+function withParsedQuickWeights<T extends { quickWeights: string }>(exerciseType: T) {
+  return { ...exerciseType, quickWeights: JSON.parse(exerciseType.quickWeights) as number[] };
+}
+
 export async function GET() {
   try {
     const exerciseTypes = await prisma.exerciseType.findMany({ orderBy: { name: 'asc' } });
-    return NextResponse.json(exerciseTypes);
+    return NextResponse.json(exerciseTypes.map(withParsedQuickWeights));
   } catch (error) {
     console.error('Erreur GET /api/exercise-types', error);
     return NextResponse.json({ error: 'Erreur lors de la récupération des types de séance' }, { status: 500 });
@@ -36,10 +41,10 @@ export async function POST(request: NextRequest) {
     }
 
     const exerciseType = await prisma.exerciseType.create({
-      data: { name, category, weightLabel, quickWeights, weightStep },
+      data: { name, category, weightLabel, quickWeights: JSON.stringify(quickWeights), weightStep },
     });
 
-    return NextResponse.json(exerciseType, { status: 201 });
+    return NextResponse.json(withParsedQuickWeights(exerciseType), { status: 201 });
   } catch (error) {
     const { message, code } = errorInfo(error);
     if (message === 'UNAUTHENTICATED') {

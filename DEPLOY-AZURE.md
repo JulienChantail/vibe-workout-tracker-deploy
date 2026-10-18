@@ -14,7 +14,7 @@ Azure Container Registry (ACR)      ← stocke les images Docker
 Azure Container Apps                ← fait tourner le conteneur, URL publique en HTTPS
    │  DATABASE_URL
    ▼
-Azure Database for PostgreSQL       ← la base de données (Flexible Server)
+Azure SQL Database                  ← la base de données (moteur SQL Server)
 ```
 
 Tout est rangé dans un **groupe de ressources** (`rg-vibe-workout`). Pour tout
@@ -26,7 +26,7 @@ supprimer à la fin, il suffit de supprimer ce groupe (étape 10).
 | --- | --- |
 | Container Apps | Quota gratuit mensuel largement suffisant ; l'appli se met en veille (0 instance) quand personne ne l'utilise. |
 | Container Registry, offre Basic | ~5 $/mois (facturé à la journée). |
-| PostgreSQL Flexible Server B1ms | Gratuit 12 mois avec un compte gratuit Azure (750 h/mois + 32 Go), sinon ~15 $/mois. |
+| Azure SQL Database, offre gratuite | Gratuit à vie : 100 000 secondes de vCore/mois + 32 Go par base. Si le quota est épuisé, la base se met en pause jusqu'au mois suivant (rien n'est facturé). |
 
 Avec **Azure for Students** (100 $ de crédit, sans carte bancaire), ça tient largement.
 Pense à supprimer les ressources quand tu as fini d'apprendre (étape 10).
@@ -59,18 +59,19 @@ RG=rg-vibe-workout
 LOCATION=francecentral
 SUFFIX=$RANDOM
 ACR=acrvibeworkout$SUFFIX
-PG=pg-vibe-workout-$SUFFIX
+SQL_SERVER=sql-vibe-workout-$SUFFIX
 ENV=env-vibe-workout
 APP=vibe-workout-tracker
-PG_USER=workoutadmin
-PG_PASSWORD=$(openssl rand -hex 16)
+SQL_USER=workoutadmin
+# Azure SQL exige un mot de passe complexe (majuscule, minuscule, chiffre, symbole)
+SQL_PASSWORD="Wk-$(openssl rand -hex 12)"
 
 # À noter quelque part : si le terminal se ferme, ces variables sont perdues.
-echo "SUFFIX=$SUFFIX  PG_PASSWORD=$PG_PASSWORD"
+echo "SUFFIX=$SUFFIX  SQL_PASSWORD=$SQL_PASSWORD"
 ```
 
 > Si le terminal se ferme, relance ce bloc en remplaçant `SUFFIX=$RANDOM` et
-> `PG_PASSWORD=...` par les valeurs notées.
+> `SQL_PASSWORD=...` par les valeurs notées.
 
 ## Étape 2 — Préparer l'abonnement
 
@@ -81,7 +82,7 @@ quelques minutes) et l'extension Container Apps de la CLI :
 az provider register --namespace Microsoft.App
 az provider register --namespace Microsoft.OperationalInsights
 az provider register --namespace Microsoft.ContainerRegistry
-az provider register --namespace Microsoft.DBforPostgreSQL
+az provider register --namespace Microsoft.Sql
 az extension add --name containerapp --upgrade
 ```
 
@@ -91,36 +92,70 @@ az extension add --name containerapp --upgrade
 az group create --name $RG --location $LOCATION
 ```
 
-## Étape 4 — La base PostgreSQL
+## Étape 4 — La base Azure SQL
+
+Azure SQL Database, c'est SQL Server géré par Azure. Il faut d'abord un **serveur
+logique** (il porte le nom DNS, le compte administrateur et le pare-feu), puis une
+**base** dessus.
 
 ```bash
-az postgres flexible-server create \
+az sql server create \
   --resource-group $RG \
-  --name $PG \
+  --name $SQL_SERVER \
   --location $LOCATION \
-  --tier Burstable --sku-name Standard_B1ms \
-  --storage-size 32 \
-  --version 16 \
-  --admin-user $PG_USER \
-  --admin-password $PG_PASSWORD \
-  --database-name workout \
-  --public-access 0.0.0.0 \
-  --yes
+  --admin-user $SQL_USER \
+  --admin-password "$SQL_PASSWORD"
 ```
 
-Ça prend 5 à 10 minutes. `--public-access 0.0.0.0` autorise uniquement les services
-Azure (donc notre Container App) à se connecter.
-
-> Erreur du type *« location is restricted »* ? Certains abonnements (étudiants
-> notamment) n'ont pas accès à toutes les régions : réessaie avec
-> `LOCATION=swedencentral` ou `LOCATION=northeurope` (refais alors l'étape 3 avec un
-> autre nom de groupe, ou garde le même groupe et change seulement `--location` ici).
-
-On construit l'URL de connexion que l'appli utilisera :
+Le pare-feu bloque tout par défaut. Cette règle spéciale (`0.0.0.0`) autorise
+uniquement les services Azure, donc notre Container App :
 
 ```bash
-DATABASE_URL="postgresql://$PG_USER:$PG_PASSWORD@$PG.postgres.database.azure.com:5432/workout?sslmode=require"
+az sql server firewall-rule create \
+  --resource-group $RG \
+  --server $SQL_SERVER \
+  --name AllowAzureServices \
+  --start-ip-address 0.0.0.0 \
+  --end-ip-address 0.0.0.0
 ```
+
+On crée la base avec l'**offre gratuite** (modèle *serverless* : la base se met en
+pause quand elle ne sert pas, et `AutoPause` garantit qu'on ne paie jamais de
+dépassement) :
+
+```bash
+az sql db create \
+  --resource-group $RG \
+  --server $SQL_SERVER \
+  --name workout \
+  --edition GeneralPurpose \
+  --family Gen5 \
+  --capacity 2 \
+  --compute-model Serverless \
+  --use-free-limit \
+  --free-limit-exhaustion-behavior AutoPause
+```
+
+> L'offre gratuite est limitée en nombre de bases par abonnement. Si Azure refuse
+> `--use-free-limit`, retire les deux dernières options : la base sera alors facturée
+> à l'usage (quelques euros par mois pour un petit usage).
+>
+> Erreur du type *« location is restricted »* ? Certains abonnements (étudiants
+> notamment) n'ont pas accès à toutes les régions : refais l'étape avec
+> `--location swedencentral` ou `--location northeurope` sur `az sql server create`.
+
+On construit l'URL de connexion que l'appli utilisera (format SQL Server, avec des
+`;`) :
+
+```bash
+DATABASE_URL="sqlserver://$SQL_SERVER.database.windows.net:1433;database=workout;user=$SQL_USER;password=$SQL_PASSWORD;encrypt=true"
+```
+
+> **Réveil de la base** : après un moment sans activité, la base se met en pause. La
+> première connexion la réveille, ce qui peut prendre jusqu'à une minute : le
+> conteneur réessaie automatiquement les migrations pendant ce temps
+> (`scripts/docker-start.sh`). La toute première visite après une longue pause peut
+> donc être lente, c'est normal.
 
 ## Étape 5 — Le registre d'images (ACR)
 
@@ -221,7 +256,7 @@ echo "https://$(az containerapp show --name $APP --resource-group $RG \
   --query properties.configuration.ingress.fqdn -o tsv)"
 ```
 
-Au démarrage, le conteneur applique les migrations Prisma sur la base Azure, puis
+Au démarrage, le conteneur crée les tables dans Azure SQL (migrations Prisma), puis
 lance Next.js. Ouvre l'URL : tu dois tomber sur `/login`.
 
 Crée ensuite les types de séance par défaut (Traction, Dips), une seule fois. L'appli

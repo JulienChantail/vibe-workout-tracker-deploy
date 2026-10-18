@@ -16,13 +16,13 @@ COPY prisma ./prisma
 # Prisma exige une DATABASE_URL pour lire sa config (prisma.config.ts), mais
 # aucune connexion n'est faite à l'installation ni au build : une valeur
 # bidon suffit. La vraie URL est fournie au lancement du conteneur.
-RUN DATABASE_URL="postgresql://build:build@localhost:5432/build" npm ci
+RUN DATABASE_URL="sqlserver://localhost:1433;database=build;user=build;password=build" npm ci
 
 # ---- 2. Build de l'application Next.js ----
 FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN DATABASE_URL="postgresql://build:build@localhost:5432/build" npm run build \
+RUN DATABASE_URL="sqlserver://localhost:1433;database=build;user=build;password=build" npm run build \
   && npm prune --omit=dev
 
 # ---- 3. Image finale, celle qui tourne en production ----
@@ -33,5 +33,5 @@ COPY --from=builder --chown=node:node /app ./
 # On ne tourne pas en root dans le conteneur
 USER node
 EXPOSE 3000
-# `npm start` applique les migrations (prisma migrate deploy) puis lance Next.js
-CMD ["npm", "start"]
+# Applique les migrations (en réessayant si la base se réveille) puis lance Next.js
+CMD ["sh", "scripts/docker-start.sh"]

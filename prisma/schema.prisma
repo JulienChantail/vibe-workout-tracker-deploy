@@ -4,29 +4,21 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlserver"
 }
 
-enum ExerciseCategory {
-  BODYWEIGHT_LESTE
-  EXTERNAL_WEIGHT
-}
-
-enum SetType {
-  WARMUP
-  WORKING
-  RECOVERY
-}
-
-enum WeightTier {
-  HEAVY
-  MEDIUM
-  LIGHT
-}
+// SQL Server (Azure SQL) ne supporte ni les enums, ni les tableaux, ni le type
+// Json avec Prisma. Les valeurs "enum" sont donc stockées en texte et validées
+// par l'application :
+//   ExerciseCategory : BODYWEIGHT_LESTE | EXTERNAL_WEIGHT
+//   SetType          : WARMUP | WORKING | RECOVERY
+//   WeightTier       : HEAVY | MEDIUM | LIGHT
+// Les identifiants sont des UUID (36 caractères) : on borne leur taille pour
+// que les index et clés restent sous les limites de SQL Server.
 
 model User {
-  id           String   @id @default(uuid())
-  username     String   @unique
+  id           String   @id @default(uuid()) @db.NVarChar(36)
+  username     String   @unique @db.NVarChar(100)
   passwordHash String
   bodyWeightKg Float?
   createdAt    DateTime @default(now())
@@ -35,24 +27,25 @@ model User {
 }
 
 model ExerciseType {
-  id           String           @id @default(uuid())
-  name         String           @unique
-  category     ExerciseCategory
+  id           String   @id @default(uuid()) @db.NVarChar(36)
+  name         String   @unique @db.NVarChar(100)
+  category     String   @db.NVarChar(20)
   weightLabel  String
-  quickWeights Float[]          @default([])
-  weightStep   Float            @default(5)
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
+  // Liste de nombres encodée en JSON, ex : "[0,5,10]"
+  quickWeights String   @default("[]")
+  weightStep   Float    @default(5)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   templates      WorkoutTemplate[]
   workoutEntries WorkoutEntry[]
 }
 
 model WorkoutTemplate {
-  id             String       @id @default(uuid())
+  id             String       @id @default(uuid()) @db.NVarChar(36)
   exerciseType   ExerciseType @relation(fields: [exerciseTypeId], references: [id], onDelete: Cascade)
-  exerciseTypeId String
-  name           String
+  exerciseTypeId String       @db.NVarChar(36)
+  name           String       @db.NVarChar(100)
   heavyWeight    Float
   mediumWeight   Float?
   lightWeight    Float?
@@ -66,25 +59,25 @@ model WorkoutTemplate {
 }
 
 model TemplateBlock {
-  id         String          @id @default(uuid())
+  id         String          @id @default(uuid()) @db.NVarChar(36)
   template   WorkoutTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  templateId String
+  templateId String          @db.NVarChar(36)
   order      Int
-  tier       WeightTier
-  setType    SetType
+  tier       String          @db.NVarChar(10)
+  setType    String          @db.NVarChar(10)
   count      Int
 
   @@index([templateId])
 }
 
 model WorkoutEntry {
-  id             String           @id @default(uuid())
+  id             String           @id @default(uuid()) @db.NVarChar(36)
   user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId         String
-  exerciseType   ExerciseType     @relation(fields: [exerciseTypeId], references: [id], onDelete: Restrict)
-  exerciseTypeId String
+  userId         String           @db.NVarChar(36)
+  exerciseType   ExerciseType     @relation(fields: [exerciseTypeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  exerciseTypeId String           @db.NVarChar(36)
   template       WorkoutTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
-  templateId     String?
+  templateId     String?          @db.NVarChar(36)
   date           DateTime
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
@@ -97,11 +90,11 @@ model WorkoutEntry {
 }
 
 model SetEntry {
-  id             String       @id @default(uuid())
+  id             String       @id @default(uuid()) @db.NVarChar(36)
   workoutEntry   WorkoutEntry @relation(fields: [workoutEntryId], references: [id], onDelete: Cascade)
-  workoutEntryId String
+  workoutEntryId String       @db.NVarChar(36)
   order          Int
-  setType        SetType
+  setType        String       @db.NVarChar(10)
   weight         Float
   reps           Int
 

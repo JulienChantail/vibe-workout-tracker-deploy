@@ -1,21 +1,23 @@
-# Lance l'appli + une base PostgreSQL en local :
+# Lance l'appli + une base SQL Server en local (même moteur qu'Azure SQL) :
 #   docker compose up --build
 # puis ouvre http://localhost:3000
 services:
   db:
-    image: postgres:17-alpine
+    image: mcr.microsoft.com/mssql/server:2022-latest
     restart: unless-stopped
     environment:
-      POSTGRES_USER: workout
-      POSTGRES_PASSWORD: workout
-      POSTGRES_DB: workout
+      ACCEPT_EULA: "Y"
+      # SQL Server exige un mot de passe "fort" (majuscule, minuscule, chiffre, symbole)
+      MSSQL_SA_PASSWORD: Workout-Local-2026
+      MSSQL_PID: Developer
     volumes:
-      - db-data:/var/lib/postgresql/data
+      - db-data:/var/opt/mssql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U workout -d workout"]
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' || exit 1"]
       interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 20
+      start_period: 10s
 
   app:
     build: .
@@ -24,7 +26,9 @@ services:
     ports:
       - "3000:3000"
     environment:
-      DATABASE_URL: postgresql://workout:workout@db:5432/workout
+      # La base `workout` est créée automatiquement par `prisma migrate deploy` au démarrage.
+      # trustServerCertificate=true : le SQL Server local utilise un certificat auto-signé.
+      DATABASE_URL: sqlserver://db:1433;database=workout;user=sa;password=Workout-Local-2026;encrypt=true;trustServerCertificate=true
       SESSION_SECRET: ${SESSION_SECRET:-dev-secret-change-me}
     depends_on:
       db:
