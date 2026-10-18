@@ -55,6 +55,8 @@ Sans Docker :
 
 ## Déploiement
 
+- [DEPLOY-AZURE.md](./DEPLOY-AZURE.md) : mise en production sur Azure (Container Apps +
+  Container Registry + PostgreSQL), avec déploiement automatique par GitHub Actions.
 - [DOCKER.md](./DOCKER.md) : image Docker de l'appli (base pour un déploiement en
   conteneur : Azure, Google Cloud Run…).
 - [DEPLOY.md](./DEPLOY.md) : mise en production sur Render avec une base Neon.
