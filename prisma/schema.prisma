@@ -1,0 +1,109 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum ExerciseCategory {
+  BODYWEIGHT_LESTE
+  EXTERNAL_WEIGHT
+}
+
+enum SetType {
+  WARMUP
+  WORKING
+  RECOVERY
+}
+
+enum WeightTier {
+  HEAVY
+  MEDIUM
+  LIGHT
+}
+
+model User {
+  id           String   @id @default(uuid())
+  username     String   @unique
+  passwordHash String
+  bodyWeightKg Float?
+  createdAt    DateTime @default(now())
+
+  workoutEntries WorkoutEntry[]
+}
+
+model ExerciseType {
+  id           String           @id @default(uuid())
+  name         String           @unique
+  category     ExerciseCategory
+  weightLabel  String
+  quickWeights Float[]          @default([])
+  weightStep   Float            @default(5)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  templates      WorkoutTemplate[]
+  workoutEntries WorkoutEntry[]
+}
+
+model WorkoutTemplate {
+  id             String       @id @default(uuid())
+  exerciseType   ExerciseType @relation(fields: [exerciseTypeId], references: [id], onDelete: Cascade)
+  exerciseTypeId String
+  name           String
+  heavyWeight    Float
+  mediumWeight   Float?
+  lightWeight    Float?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  blocks         TemplateBlock[]
+  workoutEntries WorkoutEntry[]
+
+  @@unique([exerciseTypeId, name])
+}
+
+model TemplateBlock {
+  id         String          @id @default(uuid())
+  template   WorkoutTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  templateId String
+  order      Int
+  tier       WeightTier
+  setType    SetType
+  count      Int
+
+  @@index([templateId])
+}
+
+model WorkoutEntry {
+  id             String           @id @default(uuid())
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId         String
+  exerciseType   ExerciseType     @relation(fields: [exerciseTypeId], references: [id], onDelete: Restrict)
+  exerciseTypeId String
+  template       WorkoutTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  templateId     String?
+  date           DateTime
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  sets SetEntry[]
+
+  @@index([userId])
+  @@index([exerciseTypeId])
+  @@index([date])
+}
+
+model SetEntry {
+  id             String       @id @default(uuid())
+  workoutEntry   WorkoutEntry @relation(fields: [workoutEntryId], references: [id], onDelete: Cascade)
+  workoutEntryId String
+  order          Int
+  setType        SetType
+  weight         Float
+  reps           Int
+
+  @@index([workoutEntryId])
+}
