@@ -44,7 +44,12 @@ Sans Docker :
   (séries libres avec leste/poids, répétitions, type échauffement/travail/récupération)
   ou d'une séance préenregistrée.
 - **Types de séance** : Traction et Dips par défaut, extensible (ex : développé
-  couché), avec catégorie "poids du corps + leste" ou "poids externe".
+  couché), avec catégorie "poids du corps + leste", "poids externe" ou "circuit
+  chronométré".
+- **Circuits chronométrés** (ex : défi Tom Holland / « Cindy ») : le plus de tours
+  possible dans un temps donné, au poids du corps. Chrono en direct (décompte, bouton
+  « +1 tour », écran maintenu allumé, bip et vibration à la fin) ou saisie du score
+  après coup ; score en tours + répétitions, suivi dans l'historique et la progression.
 - **Séances préenregistrées** : modèle à 3 paliers de leste/poids (lourd / moyen /
   léger, moyen et léger calculés automatiquement si non précisés) avec une séquence de
   blocs de séries personnalisable.

@@ -4,9 +4,17 @@ import { useEffect, useMemo, useState } from 'react';
 import { CalendarDays, List, Trash2 } from 'lucide-react';
 import Calendar, { toKey } from './Calendar';
 import { SET_TYPE_LABELS } from '../../components/setTypeLabels';
+import { formatScore, totalsByExercise, type CircuitExercise } from '../../../lib/circuit';
 
 type SetEntry = { id: string; order: number; setType: string; weight: number; reps: number };
-type ExerciseType = { id: string; name: string; weightLabel: string };
+type ExerciseType = {
+  id: string;
+  name: string;
+  weightLabel: string;
+  category: string;
+  timeCapMinutes: number | null;
+  circuit: CircuitExercise[];
+};
 type User = { id: string; username: string };
 type WorkoutEntry = {
   id: string;
@@ -14,6 +22,8 @@ type WorkoutEntry = {
   user: User;
   exerciseType: ExerciseType;
   template: { id: string; name: string } | null;
+  rounds: number | null;
+  extraReps: number | null;
   sets: SetEntry[];
 };
 
@@ -193,13 +203,27 @@ export default function HistoryView({ currentUserId }: { currentUserId: string }
                     </button>
                   )}
                 </div>
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {entry.sets.map((s) => (
-                    <span key={s.id} className="text-xs bg-white/10 px-2.5 py-1 rounded-full text-gray-300">
-                      {SET_TYPE_LABELS[s.setType]} · {s.weight}kg × {s.reps}
+                {entry.exerciseType.category === 'CIRCUIT' && entry.rounds !== null ? (
+                  <div className="flex flex-wrap items-center gap-2 mt-2">
+                    <span className="text-sm font-bold bg-cyan-500/20 border border-cyan-400/40 px-3 py-1 rounded-full text-cyan-200">
+                      {formatScore(entry.rounds, entry.extraReps ?? 0)}
+                      {entry.exerciseType.timeCapMinutes ? ` en ${entry.exerciseType.timeCapMinutes} min` : ''}
                     </span>
-                  ))}
-                </div>
+                    {totalsByExercise(entry.rounds, entry.extraReps ?? 0, entry.exerciseType.circuit).map((t) => (
+                      <span key={t.name} className="text-xs bg-white/10 px-2.5 py-1 rounded-full text-gray-300">
+                        {t.reps} {t.name}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {entry.sets.map((s) => (
+                      <span key={s.id} className="text-xs bg-white/10 px-2.5 py-1 rounded-full text-gray-300">
+                        {SET_TYPE_LABELS[s.setType]} · {s.weight}kg × {s.reps}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>

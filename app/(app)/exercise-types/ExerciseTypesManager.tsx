@@ -1,16 +1,21 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Plus, Trash2, Dumbbell, Weight } from 'lucide-react';
+import { Plus, Trash2, Dumbbell, Weight, Timer, X } from 'lucide-react';
+import { circuitSummary, type CircuitExercise } from '../../../lib/circuit';
 
 type ExerciseType = {
   id: string;
   name: string;
-  category: 'BODYWEIGHT_LESTE' | 'EXTERNAL_WEIGHT';
+  category: 'BODYWEIGHT_LESTE' | 'EXTERNAL_WEIGHT' | 'CIRCUIT';
   weightLabel: string;
   quickWeights: number[];
   weightStep: number;
+  timeCapMinutes: number | null;
+  circuit: CircuitExercise[];
 };
+
+type CircuitRow = { name: string; reps: number | '' };
 
 const CATEGORY_PRESETS: Record<ExerciseType['category'], { label: string; quickWeights: number[]; step: number }> = {
   BODYWEIGHT_LESTE: {
@@ -23,6 +28,25 @@ const CATEGORY_PRESETS: Record<ExerciseType['category'], { label: string; quickW
     quickWeights: [20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 140],
     step: 2.5,
   },
+  // Un circuit se fait au poids du corps : pas de champ poids
+  CIRCUIT: {
+    label: 'Poids du corps',
+    quickWeights: [],
+    step: 5,
+  },
+};
+
+// Proposé par défaut : "Cindy" (le défi Tom Holland), 20 minutes
+const DEFAULT_CIRCUIT: CircuitRow[] = [
+  { name: 'Tractions', reps: 5 },
+  { name: 'Pompes', reps: 10 },
+  { name: 'Squats', reps: 15 },
+];
+
+const CATEGORY_LABELS: Record<ExerciseType['category'], string> = {
+  BODYWEIGHT_LESTE: 'Poids du corps + leste',
+  EXTERNAL_WEIGHT: 'Poids externe',
+  CIRCUIT: 'Circuit chronométré',
 };
 
 export default function ExerciseTypesManager() {
@@ -33,6 +57,8 @@ export default function ExerciseTypesManager() {
   const [weightLabel, setWeightLabel] = useState(CATEGORY_PRESETS.BODYWEIGHT_LESTE.label);
   const [quickWeightsText, setQuickWeightsText] = useState(CATEGORY_PRESETS.BODYWEIGHT_LESTE.quickWeights.join(', '));
   const [weightStep, setWeightStep] = useState(CATEGORY_PRESETS.BODYWEIGHT_LESTE.step);
+  const [timeCapMinutes, setTimeCapMinutes] = useState<number | ''>(20);
+  const [circuitRows, setCircuitRows] = useState<CircuitRow[]>(DEFAULT_CIRCUIT);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -55,9 +81,19 @@ export default function ExerciseTypesManager() {
     setWeightStep(preset.step);
   };
 
+  const updateCircuitRow = (idx: number, patch: Partial<CircuitRow>) => {
+    setCircuitRows((rows) => rows.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+  };
+
+  const isCircuit = category === 'CIRCUIT';
+  const circuit = circuitRows
+    .map((r) => ({ name: r.name.trim(), reps: Number(r.reps) }))
+    .filter((r) => r.name && Number.isInteger(r.reps) && r.reps >= 1);
+  const circuitValid = !isCircuit || (circuit.length > 0 && Number(timeCapMinutes) >= 1);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return;
+    if (!name.trim() || !circuitValid) return;
     setSubmitting(true);
     setError('');
     const quickWeights = quickWeightsText
@@ -69,7 +105,14 @@ export default function ExerciseTypesManager() {
       const res = await fetch('/api/exercise-types', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), category, weightLabel, quickWeights, weightStep }),
+        body: JSON.stringify({
+          name: name.trim(),
+          category,
+          weightLabel,
+          quickWeights,
+          weightStep,
+          ...(isCircuit ? { timeCapMinutes: Number(timeCapMinutes), circuit } : {}),
+        }),
       });
       if (res.ok) {
         setName('');
@@ -117,7 +160,7 @@ export default function ExerciseTypesManager() {
 
         <div>
           <label className="block text-sm font-semibold text-gray-200 mb-2">Catégorie</label>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <button
               type="button"
               onClick={() => handleCategoryChange('BODYWEIGHT_LESTE')}
@@ -142,9 +185,84 @@ export default function ExerciseTypesManager() {
               <Weight size={18} />
               Poids externe (barre...)
             </button>
+            <button
+              type="button"
+              onClick={() => handleCategoryChange('CIRCUIT')}
+              className={`px-4 py-3 rounded-xl border-2 font-medium flex items-center gap-2 transition-all ${
+                category === 'CIRCUIT'
+                  ? 'bg-cyan-600/30 border-cyan-400 text-white'
+                  : 'bg-white/5 border-white/20 text-gray-300 hover:bg-white/10'
+              }`}
+            >
+              <Timer size={18} />
+              Circuit chronométré
+            </button>
           </div>
         </div>
 
+        {isCircuit ? (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-400">
+              Au poids du corps : le plus de tours possible dans le temps imparti (ex : défi Tom Holland / « Cindy »).
+            </p>
+            <div>
+              <label htmlFor="et-time-cap" className="block text-sm font-semibold text-gray-200 mb-2">Durée (minutes)</label>
+              <input
+                id="et-time-cap"
+                type="number"
+                min={1}
+                max={180}
+                value={timeCapMinutes}
+                onChange={(e) => setTimeCapMinutes(e.target.value === '' ? '' : Math.max(1, parseInt(e.target.value) || 1))}
+                className="w-full sm:w-40 px-4 py-3 bg-white/5 border border-white/20 rounded-xl text-white focus:ring-2 focus:ring-cyan-400 outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-200 mb-2">Exercices d&apos;un tour (dans l&apos;ordre)</label>
+              <div className="space-y-2">
+                {circuitRows.map((row, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={1}
+                      aria-label={`Répétitions de l'exercice ${idx + 1}`}
+                      value={row.reps}
+                      onChange={(e) =>
+                        updateCircuitRow(idx, { reps: e.target.value === '' ? '' : Math.max(1, parseInt(e.target.value) || 1) })
+                      }
+                      className="w-20 px-3 py-2 bg-white/5 border border-white/20 rounded-lg text-center text-white focus:ring-2 focus:ring-cyan-400 outline-none"
+                    />
+                    <input
+                      type="text"
+                      aria-label={`Nom de l'exercice ${idx + 1}`}
+                      value={row.name}
+                      placeholder="ex : Pompes"
+                      onChange={(e) => updateCircuitRow(idx, { name: e.target.value })}
+                      className="flex-1 min-w-0 px-3 py-2 bg-white/5 border border-white/20 rounded-lg text-white focus:ring-2 focus:ring-cyan-400 outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setCircuitRows((rows) => rows.filter((_, i) => i !== idx))}
+                      disabled={circuitRows.length === 1}
+                      className="p-2 bg-red-600/80 hover:bg-red-700 disabled:opacity-40 text-white rounded-lg transition-all"
+                      title="Retirer cet exercice"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => setCircuitRows((rows) => [...rows, { name: '', reps: 10 }])}
+                className="mt-3 px-4 py-2 bg-white/10 hover:bg-white/20 border border-white/20 text-gray-200 rounded-lg text-sm font-semibold transition-all"
+              >
+                + Ajouter un exercice
+              </button>
+            </div>
+          </div>
+        ) : (
+        <>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label htmlFor="et-weight-label" className="block text-sm font-semibold text-gray-200 mb-2">Label du champ poids</label>
@@ -179,12 +297,14 @@ export default function ExerciseTypesManager() {
             className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-xl text-white focus:ring-2 focus:ring-cyan-400 outline-none"
           />
         </div>
+        </>
+        )}
 
         {error && <p className="text-red-300 text-sm">{error}</p>}
 
         <button
           type="submit"
-          disabled={submitting || !name.trim()}
+          disabled={submitting || !name.trim() || !circuitValid}
           className="w-full px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 disabled:opacity-50 text-white rounded-xl font-bold transition-all"
         >
           {submitting ? 'Création...' : 'Créer le type de séance'}
@@ -202,7 +322,9 @@ export default function ExerciseTypesManager() {
                 <div>
                   <div className="font-semibold text-white">{t.name}</div>
                   <div className="text-xs text-gray-400 mt-1">
-                    {t.category === 'BODYWEIGHT_LESTE' ? 'Poids du corps + leste' : 'Poids externe'} · {t.weightLabel} · pas {t.weightStep}kg
+                    {t.category === 'CIRCUIT'
+                      ? `${CATEGORY_LABELS.CIRCUIT} · ${t.timeCapMinutes ?? '?'} min · ${circuitSummary(t.circuit)}`
+                      : `${CATEGORY_LABELS[t.category]} · ${t.weightLabel} · pas ${t.weightStep}kg`}
                   </div>
                 </div>
                 <button

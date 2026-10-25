@@ -10,7 +10,7 @@ datasource db {
 // SQL Server (Azure SQL) ne supporte ni les enums, ni les tableaux, ni le type
 // Json avec Prisma. Les valeurs "enum" sont donc stockées en texte et validées
 // par l'application :
-//   ExerciseCategory : BODYWEIGHT_LESTE | EXTERNAL_WEIGHT
+//   ExerciseCategory : BODYWEIGHT_LESTE | EXTERNAL_WEIGHT | CIRCUIT
 //   SetType          : WARMUP | WORKING | RECOVERY
 //   WeightTier       : HEAVY | MEDIUM | LIGHT
 // Les identifiants sont des UUID (36 caractères) : on borne leur taille pour
@@ -27,15 +27,19 @@ model User {
 }
 
 model ExerciseType {
-  id           String   @id @default(uuid()) @db.NVarChar(36)
-  name         String   @unique @db.NVarChar(100)
-  category     String   @db.NVarChar(20)
-  weightLabel  String
+  id             String   @id @default(uuid()) @db.NVarChar(36)
+  name           String   @unique @db.NVarChar(100)
+  category       String   @db.NVarChar(20)
+  weightLabel    String
   // Liste de nombres encodée en JSON, ex : "[0,5,10]"
-  quickWeights String   @default("[]")
-  weightStep   Float    @default(5)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  quickWeights   String   @default("[]")
+  weightStep     Float    @default(5)
+  // Catégorie CIRCUIT uniquement : durée du chrono et composition d'un tour,
+  // encodée en JSON, ex : '[{"name":"Tractions","reps":5},{"name":"Pompes","reps":10}]'
+  timeCapMinutes Int?
+  circuit        String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   templates      WorkoutTemplate[]
   workoutEntries WorkoutEntry[]
@@ -79,6 +83,10 @@ model WorkoutEntry {
   template       WorkoutTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
   templateId     String?          @db.NVarChar(36)
   date           DateTime
+  // Catégorie CIRCUIT uniquement : score = tours complets + répétitions en plus
+  // (une séance de circuit n'a pas de séries)
+  rounds         Int?
+  extraReps      Int?
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 

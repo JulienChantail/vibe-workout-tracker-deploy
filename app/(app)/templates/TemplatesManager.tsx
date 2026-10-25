@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Plus, Minus, Trash2, ArrowUp, ArrowDown, ListChecks } from 'lucide-react';
 import { SET_TYPE_LABELS, TIER_LABELS } from '../../components/setTypeLabels';
 
-type ExerciseType = { id: string; name: string; weightLabel: string };
+type ExerciseType = { id: string; name: string; weightLabel: string; category: string };
 type Tier = 'HEAVY' | 'MEDIUM' | 'LIGHT';
 type SetType = 'WARMUP' | 'WORKING' | 'RECOVERY';
 type Block = { tier: Tier; setType: SetType; count: number };
@@ -42,8 +42,10 @@ export default function TemplatesManager() {
     fetch('/api/exercise-types')
       .then((r) => r.json())
       .then((data: ExerciseType[]) => {
-        setExerciseTypes(data);
-        if (data.length > 0) setSelectedTypeId(data[0].id);
+        // Un circuit chronométré n'a pas de séries : pas de séance préenregistrée possible
+        const withSets = data.filter((t) => t.category !== 'CIRCUIT');
+        setExerciseTypes(withSets);
+        if (withSets.length > 0) setSelectedTypeId(withSets[0].id);
       });
   }, []);
 

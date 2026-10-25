@@ -3,14 +3,18 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Plus, Minus, X, ChevronLeft, Check, Sparkles, ListChecks } from 'lucide-react';
 import { SET_TYPE_LABELS } from '../../components/setTypeLabels';
+import CircuitSession from './CircuitSession';
+import type { CircuitExercise } from '../../../lib/circuit';
 
 type ExerciseType = {
   id: string;
   name: string;
-  category: 'BODYWEIGHT_LESTE' | 'EXTERNAL_WEIGHT';
+  category: 'BODYWEIGHT_LESTE' | 'EXTERNAL_WEIGHT' | 'CIRCUIT';
   weightLabel: string;
   quickWeights: number[];
   weightStep: number;
+  timeCapMinutes: number | null;
+  circuit: CircuitExercise[];
 };
 
 type TemplateBlock = {
@@ -45,7 +49,8 @@ function templateSummary(template: WorkoutTemplate): string {
 }
 
 export default function AddWorkoutWizard() {
-  const [step, setStep] = useState<'type' | 'mode' | 'sets'>('type');
+  // circuit : séance chronométrée (score en tours), à la place des étapes mode/sets
+  const [step, setStep] = useState<'type' | 'mode' | 'sets' | 'circuit'>('type');
   const [exerciseTypes, setExerciseTypes] = useState<ExerciseType[]>([]);
   const [templates, setTemplates] = useState<WorkoutTemplate[]>([]);
   const [selectedType, setSelectedType] = useState<ExerciseType | null>(null);
@@ -75,6 +80,10 @@ export default function AddWorkoutWizard() {
     setMode(null);
     setSelectedTemplate(null);
     setSets([]);
+    if (type.category === 'CIRCUIT') {
+      setStep('circuit');
+      return;
+    }
     setBuilder({ setType: 'WORKING', weight: type.quickWeights[0] ?? 0, reps: 1 });
     setStep('mode');
     setLoadingTemplates(true);
@@ -120,6 +129,13 @@ export default function AddWorkoutWizard() {
     return sets.every((s) => s.reps !== '' && Number(s.reps) > 0);
   }, [selectedType, sets]);
 
+  const handleCircuitSaved = () => {
+    setMessage({ type: 'success', text: 'Séance enregistrée avec succès !' });
+    setStep('type');
+    setSelectedType(null);
+    setTimeout(() => setMessage(null), 3000);
+  };
+
   const handleSubmit = async () => {
     if (!selectedType || !canSubmit) return;
     setSubmitting(true);
@@ -160,10 +176,20 @@ export default function AddWorkoutWizard() {
       <div className="flex items-center gap-2 text-sm text-gray-300">
         <span className={step === 'type' ? 'text-cyan-300 font-semibold' : ''}>1. Type</span>
         <span>›</span>
-        <span className={step === 'mode' ? 'text-cyan-300 font-semibold' : ''}>2. Détail</span>
-        <span>›</span>
-        <span className={step === 'sets' ? 'text-cyan-300 font-semibold' : ''}>3. Séries</span>
+        {step === 'circuit' ? (
+          <span className="text-cyan-300 font-semibold">2. Circuit chronométré</span>
+        ) : (
+          <>
+            <span className={step === 'mode' ? 'text-cyan-300 font-semibold' : ''}>2. Détail</span>
+            <span>›</span>
+            <span className={step === 'sets' ? 'text-cyan-300 font-semibold' : ''}>3. Séries</span>
+          </>
+        )}
       </div>
+
+      {step === 'circuit' && selectedType && (
+        <CircuitSession exerciseType={selectedType} onBack={() => setStep('type')} onSaved={handleCircuitSaved} />
+      )}
 
       {/* Étape 1 : type de séance */}
       {step === 'type' && (

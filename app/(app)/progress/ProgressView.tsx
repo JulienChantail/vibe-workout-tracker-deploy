@@ -12,9 +12,11 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { TrendingUp, Table2, LineChart as LineChartIcon } from 'lucide-react';
+import { formatScore } from '../../../lib/circuit';
 
-type ExerciseType = { id: string; name: string; weightLabel: string };
+type ExerciseType = { id: string; name: string; weightLabel: string; category: string; timeCapMinutes: number | null };
 type User = { id: string; username: string };
+// value : 1RM estimé (kg), ou nombre de tours pour un circuit (rounds/extraReps renseignés)
 type ProgressPoint = {
   id: string;
   date: string;
@@ -22,8 +24,16 @@ type ProgressPoint = {
   username: string;
   exerciseTypeId: string;
   exerciseTypeName: string;
-  oneRepMax: number;
+  value: number;
+  rounds?: number;
+  extraReps?: number;
 };
+type ChartPoint = { date: number; value: number; rounds?: number; extraReps?: number };
+
+function formatValue(p: { value: number; rounds?: number; extraReps?: number }) {
+  if (p.rounds !== undefined) return formatScore(p.rounds, p.extraReps ?? 0);
+  return `${Math.round(p.value * 10) / 10} kg`;
+}
 
 // Palette catégorielle validée (mode sombre) — ordre fixe, jamais recyclé par rang.
 const SERIES_COLORS = [
@@ -79,6 +89,7 @@ export default function ProgressView({ currentUserId }: { currentUserId: string 
   useEffect(loadProgress, [exerciseTypeId, userFilter]);
 
   const selectedType = exerciseTypes.find((t) => t.id === exerciseTypeId);
+  const isCircuit = selectedType?.category === 'CIRCUIT';
 
   // Ordre fixe des utilisateurs (alphabétique) -> couleur stable par identité, jamais par rang de filtrage.
   const userColor = useMemo(() => {
@@ -89,10 +100,15 @@ export default function ProgressView({ currentUserId }: { currentUserId: string 
   }, [users]);
 
   const series = useMemo(() => {
-    const byUser = new Map<string, { userId: string; username: string; points: { date: number; oneRepMax: number }[] }>();
+    const byUser = new Map<string, { userId: string; username: string; points: ChartPoint[] }>();
     for (const p of points) {
       const entry = byUser.get(p.userId) ?? { userId: p.userId, username: p.username, points: [] };
-      entry.points.push({ date: new Date(p.date).getTime(), oneRepMax: Math.round(p.oneRepMax * 10) / 10 });
+      entry.points.push({
+        date: new Date(p.date).getTime(),
+        value: Math.round(p.value * 10) / 10,
+        rounds: p.rounds,
+        extraReps: p.extraReps,
+      });
       byUser.set(p.userId, entry);
     }
     return Array.from(byUser.values())
@@ -159,10 +175,12 @@ export default function ProgressView({ currentUserId }: { currentUserId: string 
       <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
         <h2 className="text-xl font-bold text-white mb-1 flex items-center gap-2">
           <TrendingUp size={24} className="text-cyan-400" />
-          1RM estimé — {selectedType?.name ?? '...'}
+          {isCircuit ? 'Tours réalisés' : '1RM estimé'} — {selectedType?.name ?? '...'}
         </h2>
         <p className="text-sm text-gray-400 mb-6">
-          Estimation (formule d&apos;Epley) à partir de la meilleure série de travail de chaque séance.
+          {isCircuit
+            ? `Nombre de tours complets en ${selectedType?.timeCapMinutes ?? '?'} minutes ; les répétitions en plus comptent comme une fraction de tour.`
+            : "Estimation (formule d'Epley) à partir de la meilleure série de travail de chaque séance."}
         </p>
 
         {loading ? (
@@ -179,7 +197,7 @@ export default function ProgressView({ currentUserId }: { currentUserId: string 
                 <tr className="text-left text-gray-400 border-b border-white/10">
                   <th className="py-2 pr-4">Date</th>
                   {isMultiSeries && <th className="py-2 pr-4">Utilisateur</th>}
-                  <th className="py-2 pr-4">1RM estimé</th>
+                  <th className="py-2 pr-4">{isCircuit ? 'Score' : '1RM estimé'}</th>
                 </tr>
               </thead>
               <tbody className="[font-variant-numeric:tabular-nums]">
@@ -195,7 +213,7 @@ export default function ProgressView({ currentUserId }: { currentUserId: string 
                           {p.username}
                         </td>
                       )}
-                      <td className="py-2 pr-4 font-semibold">{Math.round(p.oneRepMax * 10) / 10} kg</td>
+                      <td className="py-2 pr-4 font-semibold">{formatValue(p)}</td>
                     </tr>
                   ))}
               </tbody>
@@ -218,21 +236,22 @@ export default function ProgressView({ currentUserId }: { currentUserId: string 
                   <YAxis
                     stroke="#898781"
                     tick={{ fill: '#c3c2b7', fontSize: 12 }}
-                    unit="kg"
+                    unit={isCircuit ? '' : 'kg'}
+                    allowDecimals={!isCircuit}
                     width={55}
                   />
                   <Tooltip
                     content={({ active, payload }) => {
                       if (!active || !payload || payload.length === 0) return null;
-                      const p = payload[0].payload as { date: number; oneRepMax: number };
+                      const p = payload[0].payload as ChartPoint;
                       return (
                         <div className="bg-slate-900/95 border border-white/20 rounded-lg px-3 py-2 text-sm">
                           <div className="text-gray-300 mb-1">{formatDateLong(p.date)}</div>
-                          {(payload as unknown as { name?: string; value?: number; color?: string }[]).map((entry) => (
+                          {(payload as unknown as { name?: string; color?: string; payload: ChartPoint }[]).map((entry) => (
                             <div key={entry.name} className="flex items-center gap-2 text-white font-semibold">
                               <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: entry.color }} />
                               {isMultiSeries ? `${entry.name} — ` : ''}
-                              {entry.value} kg
+                              {formatValue(entry.payload)}
                             </div>
                           ))}
                         </div>
@@ -245,7 +264,7 @@ export default function ProgressView({ currentUserId }: { currentUserId: string 
                     <Line
                       key={s.userId}
                       data={s.points}
-                      dataKey="oneRepMax"
+                      dataKey="value"
                       name={s.username}
                       stroke={userColor.get(s.userId)}
                       strokeWidth={2}
