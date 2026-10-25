@@ -42,8 +42,8 @@ export default function TemplatesManager() {
     fetch('/api/exercise-types')
       .then((r) => r.json())
       .then((data: ExerciseType[]) => {
-        // Un circuit chronométré n'a pas de séries : pas de séance préenregistrée possible
-        const withSets = data.filter((t) => t.category !== 'CIRCUIT');
+        // Un circuit chronométré ou un EMOM n'a pas de séries : pas de séance préenregistrée possible
+        const withSets = data.filter((t) => t.category !== 'CIRCUIT' && t.category !== 'EMOM');
         setExerciseTypes(withSets);
         if (withSets.length > 0) setSelectedTypeId(withSets[0].id);
       });

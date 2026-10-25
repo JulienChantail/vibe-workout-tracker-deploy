@@ -1,19 +1,62 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Plus, Trash2, Dumbbell, Weight, Timer, X } from 'lucide-react';
+import { Plus, Trash2, Dumbbell, Weight, Timer, X, Repeat, Pencil } from 'lucide-react';
 import { circuitSummary, type CircuitExercise } from '../../../lib/circuit';
 
 type ExerciseType = {
   id: string;
   name: string;
-  category: 'BODYWEIGHT_LESTE' | 'EXTERNAL_WEIGHT' | 'CIRCUIT';
+  category: 'BODYWEIGHT_LESTE' | 'EXTERNAL_WEIGHT' | 'CIRCUIT' | 'EMOM';
   weightLabel: string;
   quickWeights: number[];
   weightStep: number;
   timeCapMinutes: number | null;
   circuit: CircuitExercise[];
+  exerciseOptions: string[];
 };
+
+const DEFAULT_EMOM_EXERCISES = ['Dips', 'Tractions', 'Pompes'];
+
+/** Liste de noms d'exercices modifiable (exercices proposés pour un EMOM). */
+function ExerciseNamesEditor({ names, onChange }: { names: string[]; onChange: (names: string[]) => void }) {
+  return (
+    <div>
+      <div className="space-y-2">
+        {names.map((value, idx) => (
+          <div key={idx} className="flex items-center gap-2">
+            <input
+              type="text"
+              aria-label={`Exercice ${idx + 1}`}
+              value={value}
+              placeholder="ex : Squats"
+              onChange={(e) => onChange(names.map((n, i) => (i === idx ? e.target.value : n)))}
+              className="flex-1 min-w-0 px-3 py-2 bg-white/5 border border-white/20 rounded-lg text-white focus:ring-2 focus:ring-cyan-400 outline-none"
+            />
+            <button
+              type="button"
+              onClick={() => onChange(names.filter((_, i) => i !== idx))}
+              disabled={names.length === 1}
+              className="p-2 bg-red-600/80 hover:bg-red-700 disabled:opacity-40 text-white rounded-lg transition-all"
+              title="Retirer cet exercice"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={() => onChange([...names, ''])}
+        className="mt-3 px-4 py-2 bg-white/10 hover:bg-white/20 border border-white/20 text-gray-200 rounded-lg text-sm font-semibold transition-all"
+      >
+        + Ajouter un exercice
+      </button>
+    </div>
+  );
+}
+
+const cleanNames = (names: string[]) => [...new Set(names.map((n) => n.trim()).filter(Boolean))];
 
 type CircuitRow = { name: string; reps: number | '' };
 
@@ -28,8 +71,13 @@ const CATEGORY_PRESETS: Record<ExerciseType['category'], { label: string; quickW
     quickWeights: [20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 140],
     step: 2.5,
   },
-  // Un circuit se fait au poids du corps : pas de champ poids
+  // Un circuit ou un EMOM se fait au poids du corps : pas de champ poids
   CIRCUIT: {
+    label: 'Poids du corps',
+    quickWeights: [],
+    step: 5,
+  },
+  EMOM: {
     label: 'Poids du corps',
     quickWeights: [],
     step: 5,
@@ -47,6 +95,7 @@ const CATEGORY_LABELS: Record<ExerciseType['category'], string> = {
   BODYWEIGHT_LESTE: 'Poids du corps + leste',
   EXTERNAL_WEIGHT: 'Poids externe',
   CIRCUIT: 'Circuit chronométré',
+  EMOM: 'EMOM',
 };
 
 export default function ExerciseTypesManager() {
@@ -59,8 +108,14 @@ export default function ExerciseTypesManager() {
   const [weightStep, setWeightStep] = useState(CATEGORY_PRESETS.BODYWEIGHT_LESTE.step);
   const [timeCapMinutes, setTimeCapMinutes] = useState<number | ''>(20);
   const [circuitRows, setCircuitRows] = useState<CircuitRow[]>(DEFAULT_CIRCUIT);
+  const [emomNames, setEmomNames] = useState<string[]>(DEFAULT_EMOM_EXERCISES);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  // Modification d'un EMOM existant (exercices proposés et durée par défaut)
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editNames, setEditNames] = useState<string[]>([]);
+  const [editMinutes, setEditMinutes] = useState<number | ''>(10);
+  const [editError, setEditError] = useState('');
 
   const load = () => {
     setLoading(true);
@@ -79,6 +134,8 @@ export default function ExerciseTypesManager() {
     setWeightLabel(preset.label);
     setQuickWeightsText(preset.quickWeights.join(', '));
     setWeightStep(preset.step);
+    if (cat === 'CIRCUIT') setTimeCapMinutes(20);
+    if (cat === 'EMOM') setTimeCapMinutes(10);
   };
 
   const updateCircuitRow = (idx: number, patch: Partial<CircuitRow>) => {
@@ -89,7 +146,35 @@ export default function ExerciseTypesManager() {
   const circuit = circuitRows
     .map((r) => ({ name: r.name.trim(), reps: Number(r.reps) }))
     .filter((r) => r.name && Number.isInteger(r.reps) && r.reps >= 1);
-  const circuitValid = !isCircuit || (circuit.length > 0 && Number(timeCapMinutes) >= 1);
+  const isEmom = category === 'EMOM';
+  const emomOptions = cleanNames(emomNames);
+  const circuitValid =
+    (!isCircuit || (circuit.length > 0 && Number(timeCapMinutes) >= 1)) &&
+    (!isEmom || (emomOptions.length > 0 && Number(timeCapMinutes) >= 1 && Number(timeCapMinutes) <= 60));
+
+  const startEdit = (t: ExerciseType) => {
+    setEditingId(t.id);
+    setEditNames(t.exerciseOptions.length > 0 ? t.exerciseOptions : DEFAULT_EMOM_EXERCISES);
+    setEditMinutes(t.timeCapMinutes ?? 10);
+    setEditError('');
+  };
+
+  const saveEdit = async () => {
+    if (!editingId) return;
+    setEditError('');
+    const res = await fetch(`/api/exercise-types/${editingId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ exerciseOptions: cleanNames(editNames), timeCapMinutes: Number(editMinutes) }),
+    }).catch(() => null);
+    if (res?.ok) {
+      setEditingId(null);
+      load();
+    } else {
+      const data = await res?.json().catch(() => ({}));
+      setEditError(data?.error || "Erreur lors de l'enregistrement");
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -112,6 +197,7 @@ export default function ExerciseTypesManager() {
           quickWeights,
           weightStep,
           ...(isCircuit ? { timeCapMinutes: Number(timeCapMinutes), circuit } : {}),
+          ...(isEmom ? { timeCapMinutes: Number(timeCapMinutes), exerciseOptions: emomOptions } : {}),
         }),
       });
       if (res.ok) {
@@ -160,7 +246,7 @@ export default function ExerciseTypesManager() {
 
         <div>
           <label className="block text-sm font-semibold text-gray-200 mb-2">Catégorie</label>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <button
               type="button"
               onClick={() => handleCategoryChange('BODYWEIGHT_LESTE')}
@@ -197,10 +283,45 @@ export default function ExerciseTypesManager() {
               <Timer size={18} />
               Circuit chronométré
             </button>
+            <button
+              type="button"
+              onClick={() => handleCategoryChange('EMOM')}
+              className={`px-4 py-3 rounded-xl border-2 font-medium flex items-center gap-2 transition-all ${
+                category === 'EMOM'
+                  ? 'bg-fuchsia-600/30 border-fuchsia-400 text-white'
+                  : 'bg-white/5 border-white/20 text-gray-300 hover:bg-white/10'
+              }`}
+            >
+              <Repeat size={18} />
+              EMOM
+            </button>
           </div>
         </div>
 
-        {isCircuit ? (
+        {isEmom ? (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-400">
+              Every minute on the minute : le même nombre de répétitions au début de chaque minute. On choisit l&apos;exercice
+              au moment de la séance.
+            </p>
+            <div>
+              <label htmlFor="et-emom-minutes" className="block text-sm font-semibold text-gray-200 mb-2">Durée par défaut (minutes)</label>
+              <input
+                id="et-emom-minutes"
+                type="number"
+                min={1}
+                max={60}
+                value={timeCapMinutes}
+                onChange={(e) => setTimeCapMinutes(e.target.value === '' ? '' : Math.max(1, parseInt(e.target.value) || 1))}
+                className="w-full sm:w-40 px-4 py-3 bg-white/5 border border-white/20 rounded-xl text-white focus:ring-2 focus:ring-cyan-400 outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-200 mb-2">Exercices proposés</label>
+              <ExerciseNamesEditor names={emomNames} onChange={setEmomNames} />
+            </div>
+          </div>
+        ) : isCircuit ? (
           <div className="space-y-4">
             <p className="text-sm text-gray-400">
               Au poids du corps : le plus de tours possible dans le temps imparti (ex : défi Tom Holland / « Cindy »).
@@ -318,22 +439,70 @@ export default function ExerciseTypesManager() {
         ) : (
           <div className="space-y-2">
             {types.map((t) => (
-              <div key={t.id} className="flex items-center justify-between bg-white/5 p-4 rounded-xl border border-white/10">
-                <div>
-                  <div className="font-semibold text-white">{t.name}</div>
-                  <div className="text-xs text-gray-400 mt-1">
-                    {t.category === 'CIRCUIT'
-                      ? `${CATEGORY_LABELS.CIRCUIT} · ${t.timeCapMinutes ?? '?'} min · ${circuitSummary(t.circuit)}`
-                      : `${CATEGORY_LABELS[t.category]} · ${t.weightLabel} · pas ${t.weightStep}kg`}
+              <div key={t.id} className="bg-white/5 p-4 rounded-xl border border-white/10">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="font-semibold text-white">{t.name}</div>
+                    <div className="text-xs text-gray-400 mt-1">
+                      {t.category === 'CIRCUIT'
+                        ? `${CATEGORY_LABELS.CIRCUIT} · ${t.timeCapMinutes ?? '?'} min · ${circuitSummary(t.circuit)}`
+                        : t.category === 'EMOM'
+                          ? `EMOM · ${t.timeCapMinutes ?? 10} min par défaut · ${t.exerciseOptions.join(', ')}`
+                          : `${CATEGORY_LABELS[t.category]} · ${t.weightLabel} · pas ${t.weightStep}kg`}
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    {t.category === 'EMOM' && editingId !== t.id && (
+                      <button
+                        onClick={() => startEdit(t)}
+                        className="p-2 bg-white/10 hover:bg-white/20 text-gray-200 rounded-lg transition-all"
+                        title="Modifier les exercices"
+                      >
+                        <Pencil size={16} />
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleDelete(t.id)}
+                      className="p-2 bg-red-600/80 hover:bg-red-700 text-white rounded-lg transition-all"
+                      title="Supprimer"
+                    >
+                      <Trash2 size={16} />
+                    </button>
                   </div>
                 </div>
-                <button
-                  onClick={() => handleDelete(t.id)}
-                  className="p-2 bg-red-600/80 hover:bg-red-700 text-white rounded-lg transition-all"
-                  title="Supprimer"
-                >
-                  <Trash2 size={16} />
-                </button>
+                {editingId === t.id && (
+                  <div className="mt-4 space-y-4 border-t border-white/10 pt-4">
+                    <div>
+                      <label htmlFor={`edit-minutes-${t.id}`} className="block text-sm font-semibold text-gray-200 mb-2">Durée par défaut (minutes)</label>
+                      <input
+                        id={`edit-minutes-${t.id}`}
+                        type="number"
+                        min={1}
+                        max={60}
+                        value={editMinutes}
+                        onChange={(e) => setEditMinutes(e.target.value === '' ? '' : Math.max(1, parseInt(e.target.value) || 1))}
+                        className="w-full sm:w-40 px-4 py-2 bg-white/5 border border-white/20 rounded-xl text-white outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-200 mb-2">Exercices proposés</label>
+                      <ExerciseNamesEditor names={editNames} onChange={setEditNames} />
+                    </div>
+                    {editError && <p className="text-red-300 text-sm">{editError}</p>}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={saveEdit}
+                        disabled={cleanNames(editNames).length === 0 || !(Number(editMinutes) >= 1 && Number(editMinutes) <= 60)}
+                        className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 text-white rounded-lg font-semibold"
+                      >
+                        Enregistrer
+                      </button>
+                      <button onClick={() => setEditingId(null)} className="px-4 py-2 bg-white/10 hover:bg-white/20 text-gray-200 rounded-lg">
+                        Annuler
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>

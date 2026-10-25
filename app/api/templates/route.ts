@@ -49,8 +49,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Ajoute au moins une série au modèle' }, { status: 400 });
     }
     const exerciseType = await prisma.exerciseType.findUnique({ where: { id: exerciseTypeId }, select: { category: true } });
-    if (exerciseType?.category === 'CIRCUIT') {
-      return NextResponse.json({ error: "Un circuit chronométré n'a pas de séances préenregistrées" }, { status: 400 });
+    if (exerciseType?.category === 'CIRCUIT' || exerciseType?.category === 'EMOM') {
+      return NextResponse.json({ error: "Un circuit chronométré ou un EMOM n'a pas de séances préenregistrées" }, { status: 400 });
     }
     for (const block of blocks) {
       if (!VALID_TIERS.includes(block.tier) || !VALID_SET_TYPES.includes(block.setType) || !Number.isInteger(block.count) || block.count < 1) {

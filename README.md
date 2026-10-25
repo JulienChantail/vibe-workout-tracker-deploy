@@ -47,9 +47,18 @@ Sans Docker :
   couché), avec catégorie "poids du corps + leste", "poids externe" ou "circuit
   chronométré".
 - **Circuits chronométrés** (ex : défi Tom Holland / « Cindy ») : le plus de tours
-  possible dans un temps donné, au poids du corps. Chrono en direct (décompte, bouton
-  « +1 tour », écran maintenu allumé, bip et vibration à la fin) ou saisie du score
-  après coup ; score en tours + répétitions, suivi dans l'historique et la progression.
+  possible dans un temps donné, au poids du corps. On choisit un objectif de tours au
+  départ (10 tours en 20 min = un départ toutes les 2:00) : l'appli compte les tours
+  à chaque départ, et un « mode libre » permet de compter soi-même avec − / +. Sans
+  objectif, on compte ses tours librement. Score en tours + répétitions (avec
+  l'objectif), suivi dans l'historique et la progression.
+- **EMOM** (every minute on the minute) : 10 minutes par défaut, exercice au choix
+  (Dips, Tractions, Pompes… liste modifiable) ; à la fin on saisit la moyenne de
+  répétitions par minute (ex : 6,5), suivie par exercice dans la progression.
+- **Chrono des circuits et EMOM** : horloge plein écran inspirée de SmartWOD Timer,
+  annonces vocales en anglais (« 3, 2, 1, go », bip à chaque départ, « halfway there »
+  au milieu de chaque intervalle, « time » à la fin), vibration, écran maintenu
+  allumé ; le chrono continue si on passe sur une autre appli.
 - **Séances préenregistrées** : modèle à 3 paliers de leste/poids (lourd / moyen /
   léger, moyen et léger calculés automatiquement si non précisés) avec une séquence de
   blocs de séries personnalisable.

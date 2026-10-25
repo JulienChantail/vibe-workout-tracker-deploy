@@ -5,6 +5,7 @@ import { CalendarDays, List, Trash2 } from 'lucide-react';
 import Calendar, { toKey } from './Calendar';
 import { SET_TYPE_LABELS } from '../../components/setTypeLabels';
 import { formatScore, totalsByExercise, type CircuitExercise } from '../../../lib/circuit';
+import { formatRepsPerMinute, totalEmomReps } from '../../../lib/emom';
 
 type SetEntry = { id: string; order: number; setType: string; weight: number; reps: number };
 type ExerciseType = {
@@ -24,6 +25,10 @@ type WorkoutEntry = {
   template: { id: string; name: string } | null;
   rounds: number | null;
   extraReps: number | null;
+  objective: number | null;
+  exercise: string | null;
+  repsPerMinute: number | null;
+  durationMinutes: number | null;
   sets: SetEntry[];
 };
 
@@ -183,7 +188,10 @@ export default function HistoryView({ currentUserId }: { currentUserId: string }
                   <div>
                     <div className="flex items-center gap-2">
                       <span className={`w-2.5 h-2.5 rounded-full ${colorFor(entry.exerciseType.id)}`} />
-                      <span className="font-bold text-white">{entry.exerciseType.name}</span>
+                      <span className="font-bold text-white">
+                        {entry.exerciseType.name}
+                        {entry.exercise ? ` · ${entry.exercise}` : ''}
+                      </span>
                       {entry.template && (
                         <span className="text-xs bg-white/10 px-2 py-0.5 rounded-full text-gray-300">{entry.template.name}</span>
                       )}
@@ -203,12 +211,33 @@ export default function HistoryView({ currentUserId }: { currentUserId: string }
                     </button>
                   )}
                 </div>
-                {entry.exerciseType.category === 'CIRCUIT' && entry.rounds !== null ? (
+                {entry.exerciseType.category === 'EMOM' && entry.repsPerMinute !== null ? (
+                  <div className="flex flex-wrap items-center gap-2 mt-2">
+                    <span className="text-sm font-bold bg-purple-500/20 border border-purple-400/40 px-3 py-1 rounded-full text-purple-200">
+                      {formatRepsPerMinute(entry.repsPerMinute)} reps/min
+                      {entry.durationMinutes ? ` · ${entry.durationMinutes} min` : ''}
+                    </span>
+                    {entry.durationMinutes !== null && (
+                      <span className="text-xs bg-white/10 px-2.5 py-1 rounded-full text-gray-300">
+                        ≈ {totalEmomReps(entry.repsPerMinute, entry.durationMinutes)} {entry.exercise ?? 'reps'}
+                      </span>
+                    )}
+                  </div>
+                ) : entry.exerciseType.category === 'CIRCUIT' && entry.rounds !== null ? (
                   <div className="flex flex-wrap items-center gap-2 mt-2">
                     <span className="text-sm font-bold bg-cyan-500/20 border border-cyan-400/40 px-3 py-1 rounded-full text-cyan-200">
                       {formatScore(entry.rounds, entry.extraReps ?? 0)}
                       {entry.exerciseType.timeCapMinutes ? ` en ${entry.exerciseType.timeCapMinutes} min` : ''}
                     </span>
+                    {entry.objective !== null && (
+                      <span
+                        className={`text-xs px-2.5 py-1 rounded-full ${
+                          entry.rounds >= entry.objective ? 'bg-emerald-500/20 text-emerald-200' : 'bg-white/10 text-gray-300'
+                        }`}
+                      >
+                        objectif {entry.objective} {entry.rounds >= entry.objective ? '✔' : ''}
+                      </span>
+                    )}
                     {totalsByExercise(entry.rounds, entry.extraReps ?? 0, entry.exerciseType.circuit).map((t) => (
                       <span key={t.name} className="text-xs bg-white/10 px-2.5 py-1 rounded-full text-gray-300">
                         {t.reps} {t.name}

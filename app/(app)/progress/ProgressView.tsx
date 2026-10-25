@@ -13,10 +13,19 @@ import {
 } from 'recharts';
 import { TrendingUp, Table2, LineChart as LineChartIcon } from 'lucide-react';
 import { formatScore } from '../../../lib/circuit';
+import { formatRepsPerMinute } from '../../../lib/emom';
 
-type ExerciseType = { id: string; name: string; weightLabel: string; category: string; timeCapMinutes: number | null };
+type ExerciseType = {
+  id: string;
+  name: string;
+  weightLabel: string;
+  category: string;
+  timeCapMinutes: number | null;
+  exerciseOptions: string[];
+};
 type User = { id: string; username: string };
-// value : 1RM estimé (kg), ou nombre de tours pour un circuit (rounds/extraReps renseignés)
+// value : 1RM estimé (kg), nombre de tours pour un circuit (rounds/extraReps renseignés)
+// ou répétitions par minute pour un EMOM
 type ProgressPoint = {
   id: string;
   date: string;
@@ -27,11 +36,15 @@ type ProgressPoint = {
   value: number;
   rounds?: number;
   extraReps?: number;
+  objective?: number | null;
 };
-type ChartPoint = { date: number; value: number; rounds?: number; extraReps?: number };
+type ChartPoint = { date: number; value: number; rounds?: number; extraReps?: number; objective?: number | null };
 
-function formatValue(p: { value: number; rounds?: number; extraReps?: number }) {
-  if (p.rounds !== undefined) return formatScore(p.rounds, p.extraReps ?? 0);
+function formatValue(p: { value: number; rounds?: number; extraReps?: number; objective?: number | null }, category?: string) {
+  if (category === 'EMOM') return `${formatRepsPerMinute(p.value)} reps/min`;
+  if (p.rounds !== undefined) {
+    return formatScore(p.rounds, p.extraReps ?? 0) + (p.objective ? ` · objectif ${p.objective}` : '');
+  }
   return `${Math.round(p.value * 10) / 10} kg`;
 }
 
@@ -59,17 +72,24 @@ export default function ProgressView({ currentUserId }: { currentUserId: string 
   const [exerciseTypes, setExerciseTypes] = useState<ExerciseType[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [exerciseTypeId, setExerciseTypeId] = useState('');
+  // EMOM : une courbe par exercice (Dips, Tractions...)
+  const [emomExercise, setEmomExercise] = useState('');
   const [userFilter, setUserFilter] = useState(''); // '' = tous les utilisateurs
   const [points, setPoints] = useState<ProgressPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [showTable, setShowTable] = useState(false);
+
+  const selectType = (type: ExerciseType | undefined) => {
+    setExerciseTypeId(type?.id ?? '');
+    setEmomExercise(type?.category === 'EMOM' ? type.exerciseOptions[0] ?? '' : '');
+  };
 
   useEffect(() => {
     fetch('/api/exercise-types')
       .then((r) => r.json())
       .then((data: ExerciseType[]) => {
         setExerciseTypes(data);
-        if (data.length > 0) setExerciseTypeId(data[0].id);
+        selectType(data[0]);
       });
     fetch('/api/users').then((r) => r.json()).then(setUsers);
   }, []);
@@ -79,6 +99,7 @@ export default function ProgressView({ currentUserId }: { currentUserId: string 
     setLoading(true);
     const params = new URLSearchParams({ exerciseTypeId });
     if (userFilter) params.set('userId', userFilter);
+    if (emomExercise) params.set('exercise', emomExercise);
     fetch(`/api/progress?${params.toString()}`)
       .then((r) => r.json())
       .then(setPoints)
@@ -86,10 +107,11 @@ export default function ProgressView({ currentUserId }: { currentUserId: string 
   };
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- loading flag is meant to flip synchronously so the spinner shows immediately on filter change
-  useEffect(loadProgress, [exerciseTypeId, userFilter]);
+  useEffect(loadProgress, [exerciseTypeId, userFilter, emomExercise]);
 
   const selectedType = exerciseTypes.find((t) => t.id === exerciseTypeId);
   const isCircuit = selectedType?.category === 'CIRCUIT';
+  const isEmom = selectedType?.category === 'EMOM';
 
   // Ordre fixe des utilisateurs (alphabétique) -> couleur stable par identité, jamais par rang de filtrage.
   const userColor = useMemo(() => {
@@ -108,6 +130,7 @@ export default function ProgressView({ currentUserId }: { currentUserId: string 
         value: Math.round(p.value * 10) / 10,
         rounds: p.rounds,
         extraReps: p.extraReps,
+        objective: p.objective,
       });
       byUser.set(p.userId, entry);
     }
@@ -126,7 +149,7 @@ export default function ProgressView({ currentUserId }: { currentUserId: string 
           <select
             id="progress-type-filter"
             value={exerciseTypeId}
-            onChange={(e) => setExerciseTypeId(e.target.value)}
+            onChange={(e) => selectType(exerciseTypes.find((t) => t.id === e.target.value))}
             className="px-3 py-2 bg-white/5 border border-white/20 rounded-lg text-white outline-none"
           >
             {exerciseTypes.map((t) => (
@@ -136,6 +159,23 @@ export default function ProgressView({ currentUserId }: { currentUserId: string 
             ))}
           </select>
         </div>
+        {isEmom && (
+          <div>
+            <label htmlFor="progress-exercise-filter" className="block text-xs text-gray-400 mb-1">Exercice</label>
+            <select
+              id="progress-exercise-filter"
+              value={emomExercise}
+              onChange={(e) => setEmomExercise(e.target.value)}
+              className="px-3 py-2 bg-white/5 border border-white/20 rounded-lg text-white outline-none"
+            >
+              {selectedType.exerciseOptions.map((name) => (
+                <option key={name} value={name} className="bg-slate-800">
+                  {name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <div>
           <label htmlFor="progress-user-filter" className="block text-xs text-gray-400 mb-1">Utilisateur</label>
           <select
@@ -175,12 +215,15 @@ export default function ProgressView({ currentUserId }: { currentUserId: string 
       <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
         <h2 className="text-xl font-bold text-white mb-1 flex items-center gap-2">
           <TrendingUp size={24} className="text-cyan-400" />
-          {isCircuit ? 'Tours réalisés' : '1RM estimé'} — {selectedType?.name ?? '...'}
+          {isEmom ? 'Répétitions par minute' : isCircuit ? 'Tours réalisés' : '1RM estimé'} — {selectedType?.name ?? '...'}
+          {isEmom && emomExercise ? ` ${emomExercise}` : ''}
         </h2>
         <p className="text-sm text-gray-400 mb-6">
-          {isCircuit
-            ? `Nombre de tours complets en ${selectedType?.timeCapMinutes ?? '?'} minutes ; les répétitions en plus comptent comme une fraction de tour.`
-            : "Estimation (formule d'Epley) à partir de la meilleure série de travail de chaque séance."}
+          {isEmom
+            ? 'Moyenne de répétitions par minute de chaque séance.'
+            : isCircuit
+              ? `Nombre de tours complets en ${selectedType?.timeCapMinutes ?? '?'} minutes ; les répétitions en plus comptent comme une fraction de tour.`
+              : "Estimation (formule d'Epley) à partir de la meilleure série de travail de chaque séance."}
         </p>
 
         {loading ? (
@@ -197,7 +240,7 @@ export default function ProgressView({ currentUserId }: { currentUserId: string 
                 <tr className="text-left text-gray-400 border-b border-white/10">
                   <th className="py-2 pr-4">Date</th>
                   {isMultiSeries && <th className="py-2 pr-4">Utilisateur</th>}
-                  <th className="py-2 pr-4">{isCircuit ? 'Score' : '1RM estimé'}</th>
+                  <th className="py-2 pr-4">{isCircuit || isEmom ? 'Score' : '1RM estimé'}</th>
                 </tr>
               </thead>
               <tbody className="[font-variant-numeric:tabular-nums]">
@@ -213,7 +256,7 @@ export default function ProgressView({ currentUserId }: { currentUserId: string 
                           {p.username}
                         </td>
                       )}
-                      <td className="py-2 pr-4 font-semibold">{formatValue(p)}</td>
+                      <td className="py-2 pr-4 font-semibold">{formatValue(p, selectedType?.category)}</td>
                     </tr>
                   ))}
               </tbody>
@@ -236,7 +279,7 @@ export default function ProgressView({ currentUserId }: { currentUserId: string 
                   <YAxis
                     stroke="#898781"
                     tick={{ fill: '#c3c2b7', fontSize: 12 }}
-                    unit={isCircuit ? '' : 'kg'}
+                    unit={isCircuit || isEmom ? '' : 'kg'}
                     allowDecimals={!isCircuit}
                     width={55}
                   />
@@ -251,7 +294,7 @@ export default function ProgressView({ currentUserId }: { currentUserId: string 
                             <div key={entry.name} className="flex items-center gap-2 text-white font-semibold">
                               <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: entry.color }} />
                               {isMultiSeries ? `${entry.name} — ` : ''}
-                              {formatValue(entry.payload)}
+                              {formatValue(entry.payload, selectedType?.category)}
                             </div>
                           ))}
                         </div>

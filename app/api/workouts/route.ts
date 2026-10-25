@@ -3,14 +3,22 @@ import prisma from '../../../lib/prisma';
 import { requireCurrentUser } from '../../../lib/session';
 import { errorInfo } from '../../../lib/errors';
 import { parseCircuit, repsPerRound } from '../../../lib/circuit';
+import { parseExerciseOptions } from '../../../lib/emom';
 
 const VALID_SET_TYPES = ['WARMUP', 'WORKING', 'RECOVERY'];
 
 type SetInput = { setType: 'WARMUP' | 'WORKING' | 'RECOVERY'; weight: number; reps: number };
 
-// SQL Server ne gère pas le type Json : la composition du circuit est renvoyée décodée
-function withParsedCircuit<T extends { exerciseType: { circuit: string | null } }>(entry: T) {
-  return { ...entry, exerciseType: { ...entry.exerciseType, circuit: parseCircuit(entry.exerciseType.circuit) } };
+// SQL Server ne gère pas le type Json : circuit et exercices d'EMOM sont renvoyés décodés
+function withParsedCircuit<T extends { exerciseType: { circuit: string | null; exerciseOptions: string | null } }>(entry: T) {
+  return {
+    ...entry,
+    exerciseType: {
+      ...entry.exerciseType,
+      circuit: parseCircuit(entry.exerciseType.circuit),
+      exerciseOptions: parseExerciseOptions(entry.exerciseType.exerciseOptions),
+    },
+  };
 }
 
 export async function GET(request: NextRequest) {
@@ -72,11 +80,30 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Type de séance introuvable' }, { status: 400 });
     }
     const isCircuit = exerciseType.category === 'CIRCUIT';
+    const isEmom = exerciseType.category === 'EMOM';
 
     // Circuit : un score (tours complets + répétitions du tour commencé), pas de séries
     const rounds = Number(body.rounds);
     const extraReps = Number(body.extraReps ?? 0);
-    if (isCircuit) {
+    const objective = body.objective === null || body.objective === undefined ? null : Number(body.objective);
+    // EMOM : exercice, moyenne de répétitions par minute et durée, pas de séries
+    const exercise = typeof body.exercise === 'string' ? body.exercise.trim() : '';
+    const repsPerMinute = Number(body.repsPerMinute);
+    const durationMinutes = Number(body.durationMinutes);
+    if (isEmom) {
+      if (!exercise || exercise.length > 100) {
+        return NextResponse.json({ error: 'Choisis un exercice' }, { status: 400 });
+      }
+      if (!Number.isFinite(repsPerMinute) || repsPerMinute <= 0 || repsPerMinute > 200) {
+        return NextResponse.json({ error: 'Nombre de répétitions par minute invalide' }, { status: 400 });
+      }
+      if (!Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 60) {
+        return NextResponse.json({ error: 'La durée doit être comprise entre 1 et 60 minutes' }, { status: 400 });
+      }
+    } else if (isCircuit) {
+      if (objective !== null && (!Number.isInteger(objective) || objective < 1 || objective > 1000)) {
+        return NextResponse.json({ error: 'Objectif invalide' }, { status: 400 });
+      }
       const perRound = repsPerRound(parseCircuit(exerciseType.circuit));
       if (!Number.isInteger(rounds) || rounds < 0 || !Number.isInteger(extraReps) || extraReps < 0) {
         return NextResponse.json({ error: 'Score invalide' }, { status: 400 });
@@ -110,12 +137,16 @@ export async function POST(request: NextRequest) {
       data: {
         userId: user.id,
         exerciseTypeId,
-        templateId: isCircuit ? null : templateId,
+        templateId: isCircuit || isEmom ? null : templateId,
         date: new Date(date),
         rounds: isCircuit ? rounds : null,
         extraReps: isCircuit ? extraReps : null,
+        objective: isCircuit ? objective : null,
+        exercise: isEmom ? exercise : null,
+        repsPerMinute: isEmom ? Math.round(repsPerMinute * 10) / 10 : null,
+        durationMinutes: isEmom ? durationMinutes : null,
         sets: {
-          create: (isCircuit ? [] : sets).map((s, idx) => ({
+          create: (isCircuit || isEmom ? [] : sets).map((s, idx) => ({
             order: idx,
             setType: s.setType,
             weight: Number(s.weight),

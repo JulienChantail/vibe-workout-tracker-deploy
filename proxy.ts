@@ -27,5 +27,6 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+  // sounds/ : annonces vocales du chrono, fichiers statiques sans donnée privée
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|sounds/).*)'],
 };

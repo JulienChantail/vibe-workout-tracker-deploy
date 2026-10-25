@@ -4,17 +4,19 @@ import { useEffect, useMemo, useState } from 'react';
 import { Plus, Minus, X, ChevronLeft, Check, Sparkles, ListChecks } from 'lucide-react';
 import { SET_TYPE_LABELS } from '../../components/setTypeLabels';
 import CircuitSession from './CircuitSession';
+import EmomSession from './EmomSession';
 import type { CircuitExercise } from '../../../lib/circuit';
 
 type ExerciseType = {
   id: string;
   name: string;
-  category: 'BODYWEIGHT_LESTE' | 'EXTERNAL_WEIGHT' | 'CIRCUIT';
+  category: 'BODYWEIGHT_LESTE' | 'EXTERNAL_WEIGHT' | 'CIRCUIT' | 'EMOM';
   weightLabel: string;
   quickWeights: number[];
   weightStep: number;
   timeCapMinutes: number | null;
   circuit: CircuitExercise[];
+  exerciseOptions: string[];
 };
 
 type TemplateBlock = {
@@ -49,8 +51,8 @@ function templateSummary(template: WorkoutTemplate): string {
 }
 
 export default function AddWorkoutWizard() {
-  // circuit : séance chronométrée (score en tours), à la place des étapes mode/sets
-  const [step, setStep] = useState<'type' | 'mode' | 'sets' | 'circuit'>('type');
+  // circuit / emom : séances chronométrées, à la place des étapes mode/sets
+  const [step, setStep] = useState<'type' | 'mode' | 'sets' | 'circuit' | 'emom'>('type');
   const [exerciseTypes, setExerciseTypes] = useState<ExerciseType[]>([]);
   const [templates, setTemplates] = useState<WorkoutTemplate[]>([]);
   const [selectedType, setSelectedType] = useState<ExerciseType | null>(null);
@@ -80,8 +82,8 @@ export default function AddWorkoutWizard() {
     setMode(null);
     setSelectedTemplate(null);
     setSets([]);
-    if (type.category === 'CIRCUIT') {
-      setStep('circuit');
+    if (type.category === 'CIRCUIT' || type.category === 'EMOM') {
+      setStep(type.category === 'CIRCUIT' ? 'circuit' : 'emom');
       return;
     }
     setBuilder({ setType: 'WORKING', weight: type.quickWeights[0] ?? 0, reps: 1 });
@@ -176,8 +178,8 @@ export default function AddWorkoutWizard() {
       <div className="flex items-center gap-2 text-sm text-gray-300">
         <span className={step === 'type' ? 'text-cyan-300 font-semibold' : ''}>1. Type</span>
         <span>›</span>
-        {step === 'circuit' ? (
-          <span className="text-cyan-300 font-semibold">2. Circuit chronométré</span>
+        {step === 'circuit' || step === 'emom' ? (
+          <span className="text-cyan-300 font-semibold">{step === 'circuit' ? '2. Circuit chronométré' : '2. EMOM'}</span>
         ) : (
           <>
             <span className={step === 'mode' ? 'text-cyan-300 font-semibold' : ''}>2. Détail</span>
@@ -189,6 +191,9 @@ export default function AddWorkoutWizard() {
 
       {step === 'circuit' && selectedType && (
         <CircuitSession exerciseType={selectedType} onBack={() => setStep('type')} onSaved={handleCircuitSaved} />
+      )}
+      {step === 'emom' && selectedType && (
+        <EmomSession exerciseType={selectedType} onBack={() => setStep('type')} onSaved={handleCircuitSaved} />
       )}
 
       {/* Étape 1 : type de séance */}

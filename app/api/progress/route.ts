@@ -8,11 +8,14 @@ export async function GET(request: NextRequest) {
     const params = request.nextUrl.searchParams;
     const exerciseTypeId = params.get('exerciseTypeId');
     const userId = params.get('userId');
+    // EMOM : une courbe par exercice (Dips, Tractions...)
+    const exercise = params.get('exercise');
 
     const entries = await prisma.workoutEntry.findMany({
       where: {
         ...(exerciseTypeId ? { exerciseTypeId } : {}),
         ...(userId ? { userId } : {}),
+        ...(exercise ? { exercise } : {}),
       },
       include: {
         user: { select: { id: true, username: true, bodyWeightKg: true } },
@@ -22,8 +25,9 @@ export async function GET(request: NextRequest) {
       orderBy: { date: 'asc' },
     });
 
-    // `value` est le 1RM estimé (kg) pour les exercices avec poids, et le nombre de
-    // tours (avec la fraction du tour commencé) pour les circuits.
+    // `value` est le 1RM estimé (kg) pour les exercices avec poids, le nombre de
+    // tours (avec la fraction du tour commencé) pour les circuits, et la moyenne
+    // de répétitions par minute pour les EMOM.
     // bodyWeightKg n'est utilisé que côté serveur pour le calcul du 1RM des
     // exercices lestés (poids du corps + leste) : il n'est jamais renvoyé au client.
     const points = entries
@@ -36,6 +40,9 @@ export async function GET(request: NextRequest) {
           exerciseTypeId: entry.exerciseType.id,
           exerciseTypeName: entry.exerciseType.name,
         };
+        if (entry.exerciseType.category === 'EMOM') {
+          return { ...base, value: entry.repsPerMinute, exercise: entry.exercise, durationMinutes: entry.durationMinutes };
+        }
         if (entry.exerciseType.category === 'CIRCUIT') {
           if (entry.rounds === null) return { ...base, value: null };
           const extraReps = entry.extraReps ?? 0;
@@ -44,6 +51,7 @@ export async function GET(request: NextRequest) {
             value: roundsScore(entry.rounds, extraReps, parseCircuit(entry.exerciseType.circuit)),
             rounds: entry.rounds,
             extraReps,
+            objective: entry.objective,
           };
         }
         return {
