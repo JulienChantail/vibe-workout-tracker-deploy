@@ -37,7 +37,9 @@ while read -r server group; do
     fi
   done < <(az sql db list -g "$group" -s "$server" --query "[?name!='master'].[name, useFreeLimit, freeLimitExhaustionBehavior]" -o tsv)
   state=$(az sql server advanced-threat-protection-setting show -g "$group" -n "$server" --query state -o tsv 2>/dev/null)
-  if [ "$state" = "Enabled" ]; then
+  if [ -z "$state" ]; then
+    warn "serveur $server : impossible de lire l'état de Microsoft Defender for SQL"
+  elif [ "$state" = "Enabled" ]; then
     warn "serveur $server : Microsoft Defender for SQL est activé (payant)"
   else
     ok "serveur $server : Microsoft Defender for SQL désactivé"
@@ -45,8 +47,9 @@ while read -r server group; do
 done < <(az sql server list --query "[].[name, resourceGroup]" -o tsv)
 
 title "Microsoft Defender for Cloud (plans payants de l'abonnement)"
-plans=$(az security pricing list --query "(value || @)[?pricingTier=='Standard'].name" -o tsv 2>/dev/null)
-if [ -n "$plans" ]; then
+if ! plans=$(az security pricing list --query "(value || @)[?pricingTier=='Standard'].name" -o tsv 2>/dev/null); then
+  warn "impossible de lire les plans Defender (droits insuffisants sur l'abonnement)"
+elif [ -n "$plans" ]; then
   warn "plans payants activés : $(echo $plans)"
 else
   ok "aucun plan payant activé"

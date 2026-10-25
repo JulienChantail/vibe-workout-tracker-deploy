@@ -7,6 +7,11 @@ name: Deploy to Azure
 on:
   push:
     branches: [main]
+    # Pas de redéploiement pour un commit qui ne touche que la doc ou la maintenance
+    paths-ignore:
+      - '**.md'
+      - 'scripts/azure-free-check.sh'
+      - '.github/workflows/azure-free-setup.yml'
   workflow_dispatch:
 
 permissions:
