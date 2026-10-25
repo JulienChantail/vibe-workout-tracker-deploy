@@ -47,13 +47,20 @@ while read -r server group; do
 done < <(az sql server list --query "[].[name, resourceGroup]" -o tsv)
 
 title "Microsoft Defender for Cloud (plans payants de l'abonnement)"
-if ! plans=$(az security pricing list --query "(value || @)[?pricingTier=='Standard'].name" -o tsv 2>/dev/null); then
-  warn "impossible de lire les plans Defender (droits insuffisants sur l'abonnement)"
+defender_err=$(mktemp)
+if ! plans=$(az security pricing list --query "(value || @)[?pricingTier=='Standard'].name" -o tsv 2>"$defender_err"); then
+  # Abonnement jamais inscrit à Defender for Cloud : aucun plan ne peut être activé
+  if grep -q "Subscription Not Registered" "$defender_err"; then
+    ok "Defender for Cloud n'a jamais été activé sur l'abonnement (aucun plan payant)"
+  else
+    warn "impossible de lire les plans Defender (droits insuffisants sur l'abonnement)"
+  fi
 elif [ -n "$plans" ]; then
   warn "plans payants activés : $(echo $plans)"
 else
   ok "aucun plan payant activé"
 fi
+rm -f "$defender_err"
 
 title "Container Apps"
 while IFS=$'\t' read -r env group; do
