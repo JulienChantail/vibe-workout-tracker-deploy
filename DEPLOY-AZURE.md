@@ -191,7 +191,7 @@ az containerapp create \
   --ingress external \
   --secrets database-url="$DATABASE_URL" session-secret="$(openssl rand -hex 32)" \
   --env-vars DATABASE_URL=secretref:database-url SESSION_SECRET=secretref:session-secret \
-  --cpu 0.5 --memory 1.0Gi \
+  --cpu 0.25 --memory 0.5Gi \
   --min-replicas 0 --max-replicas 1
 ```
 
@@ -199,6 +199,8 @@ az containerapp create \
   App, et les variables d'environnement y font référence (`secretref:`).
 - `--min-replicas 0` : l'appli s'éteint quand elle ne reçoit pas de visites (gratuit),
   et redémarre en quelques secondes à la visite suivante.
+- `--cpu 0.25 --memory 0.5Gi` : la plus petite taille. L'appli utilise environ 140 Mo
+  de mémoire, et le quota gratuit couvre alors environ 200 h de fonctionnement par mois.
 
 > Pour l'instant l'URL ne répond pas : l'image temporaire écoute sur le port 80 et
 > non 3000. C'est normal, elle sera remplacée à l'étape 7.
@@ -237,15 +239,12 @@ nulle part ailleurs que dans GitHub.
 **7.3 — Lancer le déploiement** : onglet **Actions** du dépôt → *Deploy to Azure* →
 **Run workflow**.
 
-**7.4 — Rendre l'image publique (une seule fois)** : une image publiée sur `ghcr.io`
-est privée au départ, et Azure ne peut pas la télécharger. Le premier déploiement
-échoue donc à l'étape « Déployer la nouvelle image » : c'est normal.
-
-1. Sur la page du dépôt, colonne de droite → **Packages** → `vibe-workout-tracker-deploy`.
-2. **Package settings** → tout en bas, **Change visibility** → **Public** → confirme.
-3. Relance le déploiement (7.3).
-
 Ensuite, chaque `git push` sur `main` redéploiera automatiquement.
+
+> L'image publiée sur `ghcr.io` prend la visibilité du dépôt : publique ici, donc Azure
+> la télécharge sans identifiant. Si le dépôt était privé, il faudrait la rendre
+> publique : dépôt → **Packages** → `vibe-workout-tracker-deploy` → **Package
+> settings** → **Change visibility** → **Public**.
 
 ## Étape 8 — Ouvrir l'appli
 
@@ -308,6 +307,29 @@ az containerapp revision list --name $APP --resource-group $RG -o table
 
 Dans le portail : ressource `vibe-workout-tracker` → **Flux de journaux** (Log stream)
 et **Révisions**.
+
+## Étape 9 bis — Vérifier que tout reste gratuit
+
+Le script [`scripts/azure-free-check.sh`](scripts/azure-free-check.sh) passe en revue
+l'abonnement sans rien modifier : ressources payantes (registre ACR, IP publique,
+load balancer, VM, stockage…), offre gratuite d'Azure SQL, Defender, taille et mise en
+veille de l'appli, conservation des logs. Dans Cloud Shell :
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/JulienChantail/vibe-workout-tracker-deploy/main/scripts/azure-free-check.sh)
+```
+
+Deux protections en plus, recommandées :
+
+- **Plafonner les logs** à 0,1 Go par jour (3 Go/mois, sous les 5 Go gratuits) :
+  ```bash
+  az monitor log-analytics workspace update --resource-group $RG \
+    --workspace-name $(az monitor log-analytics workspace list -g $RG --query "[0].name" -o tsv) \
+    --quota 0.1
+  ```
+- **Une alerte de budget** : portail Azure → **Cost Management** → **Budgets** →
+  **Ajouter**, montant 1 €, alerte par e-mail à 100 % du réel. Un budget est gratuit et
+  te prévient au premier centime.
 
 ## Étape 10 — Tout supprimer
 
