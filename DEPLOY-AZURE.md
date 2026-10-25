@@ -266,6 +266,38 @@ doit être allumée (ouvre l'URL juste avant) :
 az containerapp exec --name $APP --resource-group $RG --command "node prisma/seed.mjs"
 ```
 
+## Étape 8 bis — Importer les données de la première version (Neon)
+
+Le script [`scripts/import-from-neon.mjs`](scripts/import-from-neon.mjs) copie les profils,
+types de séance, séances préenregistrées, séances et séries de l'ancienne base
+PostgreSQL (Neon) vers Azure SQL :
+
+- les mots de passe sont conservés (chacun se reconnecte avec son ancien mot de passe) ;
+- ce qui existe déjà sur Azure est réutilisé, sans doublon : un profil de même nom
+  (sans tenir compte des majuscules) garde son mot de passe Azure et récupère les
+  séances de Neon ; « Traction » et « Dips » créés par le seed sont réutilisés ;
+- tout se fait dans une transaction : en cas d'erreur, rien n'est écrit ;
+- il peut être relancé sans risque.
+
+Récupère l'URL de connexion Neon : sur [console.neon.tech](https://console.neon.tech) →
+ton projet → **Connect**, ou la variable `DATABASE_URL` du service sur Render.
+
+Ouvre l'appli dans ton navigateur (pour qu'elle soit allumée), puis ouvre un terminal
+**dans le conteneur** :
+
+```bash
+az containerapp exec --name $APP --resource-group $RG --command sh
+```
+
+Dans ce terminal (la base Azure SQL y est déjà configurée) :
+
+```sh
+export NEON_DATABASE_URL='postgresql://...'   # colle l'URL Neon entre les apostrophes
+node scripts/import-from-neon.mjs --dry-run      # simulation : affiche ce qui serait importé
+node scripts/import-from-neon.mjs                # import réel
+exit
+```
+
 ## Étape 9 — Observer et dépanner
 
 ```bash
