@@ -56,7 +56,8 @@ Sans Docker :
 
 ## Déploiement
 
-- [DEPLOY-AZURE.md](./DEPLOY-AZURE.md) : mise en production sur Azure (Container Apps +
-  Container Registry + Azure SQL Database), avec déploiement automatique par GitHub Actions.
+- [DEPLOY-AZURE.md](./DEPLOY-AZURE.md) : mise en production gratuite sur Azure (Container Apps +
+  Azure SQL Database, images sur GitHub Container Registry), avec déploiement automatique
+  par GitHub Actions.
 - [DOCKER.md](./DOCKER.md) : image Docker de l'appli (base pour un déploiement en
   conteneur).

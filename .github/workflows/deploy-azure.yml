@@ -1,6 +1,6 @@
 # Déploiement continu sur Azure Container Apps.
 # À chaque push sur `main` : construit l'image Docker, l'envoie dans
-# Azure Container Registry, puis met à jour la Container App.
+# GitHub Container Registry (ghcr.io, gratuit), puis met à jour la Container App.
 # Configuration (secret + variables GitHub) : voir DEPLOY-AZURE.md, étape 7.
 name: Deploy to Azure
 
@@ -11,30 +11,33 @@ on:
 
 permissions:
   contents: read
+  packages: write # publier l'image sur ghcr.io avec le GITHUB_TOKEN
 
 jobs:
   build-and-deploy:
     # Ne tourne que lorsque les variables Azure ont été configurées sur GitHub
-    if: ${{ vars.ACR_NAME != '' }}
+    if: ${{ vars.CONTAINER_APP_NAME != '' }}
     runs-on: ubuntu-latest
-    env:
-      IMAGE: ${{ vars.ACR_NAME }}.azurecr.io/vibe-workout-tracker:${{ github.sha }}
     steps:
       - name: Récupérer le code
         uses: actions/checkout@v4
 
-      - name: Connexion à Azure
-        uses: azure/login@v2
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: Nom de l'image
+        # ghcr.io exige un nom en minuscules
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}:${GITHUB_SHA}" >> "$GITHUB_ENV"
 
-      - name: Connexion au Container Registry
-        run: az acr login --name ${{ vars.ACR_NAME }}
+      - name: Connexion à GitHub Container Registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
       - name: Construire et envoyer l'image
         run: |
           docker build -t "$IMAGE" .
           docker push "$IMAGE"
+
+      - name: Connexion à Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Déployer la nouvelle image
         run: |

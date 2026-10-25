@@ -1,6 +1,6 @@
 # Déploiement sur Azure
 
-Objectif : mettre l'appli en ligne **entièrement sur Azure**, en conteneur Docker.
+Objectif : mettre l'appli en ligne sur Azure, en conteneur Docker, **sans rien payer**.
 
 ## L'architecture
 
@@ -8,7 +8,7 @@ Objectif : mettre l'appli en ligne **entièrement sur Azure**, en conteneur Dock
 GitHub (push sur main)
    │  GitHub Actions : docker build + docker push
    ▼
-Azure Container Registry (ACR)      ← stocke les images Docker
+GitHub Container Registry (ghcr.io) ← stocke les images Docker (gratuit, image publique)
    │  az containerapp update
    ▼
 Azure Container Apps                ← fait tourner le conteneur, URL publique en HTTPS
@@ -20,16 +20,17 @@ Azure SQL Database                  ← la base de données (moteur SQL Server)
 Tout est rangé dans un **groupe de ressources** (`rg-vibe-workout`). Pour tout
 supprimer à la fin, il suffit de supprimer ce groupe (étape 10).
 
-## Coûts (à surveiller !)
+## Coûts : 0 €
 
-| Ressource | Coût indicatif |
+| Ressource | Coût |
 | --- | --- |
+| GitHub Container Registry | Gratuit pour une image publique. |
 | Container Apps | Quota gratuit mensuel largement suffisant ; l'appli se met en veille (0 instance) quand personne ne l'utilise. |
-| Container Registry, offre Basic | ~5 $/mois (facturé à la journée). |
 | Azure SQL Database, offre gratuite | Gratuit à vie : 100 000 secondes de vCore/mois + 32 Go par base. Si le quota est épuisé, la base se met en pause jusqu'au mois suivant (rien n'est facturé). |
+| Log Analytics (les logs) | Gratuit jusqu'à 5 Go/mois. |
 
-Avec **Azure for Students** (100 $ de crédit, sans carte bancaire), ça tient largement.
-Pense à supprimer les ressources quand tu as fini d'apprendre (étape 10).
+> On n'utilise **pas** Azure Container Registry : son offre la moins chère (Basic)
+> coûte environ 5 $/mois.
 
 ## Étape 0 — Ouvrir un terminal Azure
 
@@ -58,7 +59,6 @@ On définit les noms une fois pour toutes. Les noms du registre et de la base do
 RG=rg-vibe-workout
 LOCATION=francecentral
 SUFFIX=$RANDOM
-ACR=acrvibeworkout$SUFFIX
 SQL_SERVER=sql-vibe-workout-$SUFFIX
 ENV=env-vibe-workout
 APP=vibe-workout-tracker
@@ -81,7 +81,6 @@ quelques minutes) et l'extension Container Apps de la CLI :
 ```bash
 az provider register --namespace Microsoft.App
 az provider register --namespace Microsoft.OperationalInsights
-az provider register --namespace Microsoft.ContainerRegistry
 az provider register --namespace Microsoft.Sql
 az extension add --name containerapp --upgrade
 ```
@@ -157,22 +156,14 @@ DATABASE_URL="sqlserver://$SQL_SERVER.database.windows.net:1433;database=workout
 > (`scripts/docker-start.sh`). La toute première visite après une longue pause peut
 > donc être lente, c'est normal.
 
-## Étape 5 — Le registre d'images (ACR)
+## Étape 5 — Le registre d'images : GitHub Container Registry
 
-```bash
-az acr create \
-  --resource-group $RG \
-  --name $ACR \
-  --sku Basic \
-  --admin-enabled true
-```
+Rien à créer sur Azure : les images sont stockées gratuitement sur **GitHub Container
+Registry** (`ghcr.io`), à côté du code. GitHub Actions les y publie (étape 7).
 
-Le compte « admin » du registre permet à la Container App de récupérer les images
-avec un simple identifiant / mot de passe :
-
-```bash
-ACR_PASSWORD=$(az acr credential show --name $ACR --query "passwords[0].value" -o tsv)
-```
+L'image est **publique** : Azure peut la télécharger sans identifiant, et le code est
+déjà public. Elle ne contient aucun secret : `DATABASE_URL` et `SESSION_SECRET` sont
+fournis par Azure au démarrage du conteneur.
 
 ## Étape 6 — L'environnement et la Container App
 
@@ -187,8 +178,8 @@ az containerapp env create \
 ```
 
 On crée l'application avec une **image temporaire** de démonstration Microsoft :
-notre propre image n'existe pas encore dans le registre, c'est GitHub Actions qui la
-construira à l'étape 7.
+notre propre image n'existe pas encore, c'est GitHub Actions qui la construira à
+l'étape 7.
 
 ```bash
 az containerapp create \
@@ -198,9 +189,6 @@ az containerapp create \
   --image mcr.microsoft.com/k8se/quickstart:latest \
   --target-port 3000 \
   --ingress external \
-  --registry-server $ACR.azurecr.io \
-  --registry-username $ACR \
-  --registry-password "$ACR_PASSWORD" \
   --secrets database-url="$DATABASE_URL" session-secret="$(openssl rand -hex 32)" \
   --env-vars DATABASE_URL=secretref:database-url SESSION_SECRET=secretref:session-secret \
   --cpu 0.5 --memory 1.0Gi \
@@ -218,8 +206,10 @@ az containerapp create \
 ## Étape 7 — Déploiement automatique avec GitHub Actions
 
 Le fichier [`.github/workflows/deploy-azure.yml`](.github/workflows/deploy-azure.yml)
-construit l'image, l'envoie dans l'ACR et met à jour la Container App à chaque push
-sur `main`. Il lui faut un accès à Azure.
+construit l'image, la publie sur `ghcr.io` et met à jour la Container App à chaque
+push sur `main`. Pour publier sur `ghcr.io`, il utilise le jeton fourni automatiquement
+par GitHub (`GITHUB_TOKEN`) : rien à configurer. Il lui faut en revanche un accès à
+Azure.
 
 **7.1 — Créer une identité pour GitHub** (un « service principal »), autorisée
 uniquement sur notre groupe de ressources :
@@ -240,14 +230,22 @@ nulle part ailleurs que dans GitHub.
 
 - Onglet **Secrets** → *New repository secret* :
   - `AZURE_CREDENTIALS` = le JSON de l'étape 7.1
-- Onglet **Variables** → *New repository variable* (affiche les valeurs avec
-  `echo $ACR $RG $APP`) :
-  - `ACR_NAME` = la valeur de `$ACR` (ex : `acrvibeworkout12345`)
+- Onglet **Variables** → *New repository variable* :
   - `RESOURCE_GROUP` = `rg-vibe-workout`
   - `CONTAINER_APP_NAME` = `vibe-workout-tracker`
 
 **7.3 — Lancer le déploiement** : onglet **Actions** du dépôt → *Deploy to Azure* →
-**Run workflow**. Ensuite, chaque `git push` sur `main` redéploiera automatiquement.
+**Run workflow**.
+
+**7.4 — Rendre l'image publique (une seule fois)** : une image publiée sur `ghcr.io`
+est privée au départ, et Azure ne peut pas la télécharger. Le premier déploiement
+échoue donc à l'étape « Déployer la nouvelle image » : c'est normal.
+
+1. Sur la page du dépôt, colonne de droite → **Packages** → `vibe-workout-tracker-deploy`.
+2. **Package settings** → tout en bas, **Change visibility** → **Public** → confirme.
+3. Relance le déploiement (7.3).
+
+Ensuite, chaque `git push` sur `main` redéploiera automatiquement.
 
 ## Étape 8 — Ouvrir l'appli
 
@@ -313,11 +311,13 @@ et **Révisions**.
 
 ## Étape 10 — Tout supprimer
 
-Quand tu as fini, pour ne plus rien payer :
+Quand tu as fini :
 
 ```bash
 az group delete --name $RG --yes --no-wait
 az ad sp delete --id $(az ad sp list --display-name sp-vibe-workout-github --query "[0].appId" -o tsv)
 ```
 
-Puis supprime le secret `AZURE_CREDENTIALS` et les variables dans GitHub.
+Puis supprime le secret `AZURE_CREDENTIALS` et les variables dans GitHub, et l'image :
+dépôt → **Packages** → `vibe-workout-tracker-deploy` → **Package settings** →
+**Delete this package**.
